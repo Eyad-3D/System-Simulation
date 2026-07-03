@@ -1,0 +1,236 @@
+{
+  "components": [
+    {
+      "id": "electric.voltage_source",
+      "category": "Base Electric",
+      "name": "Voltage Source",
+      "icon": "zap",
+      "domain": "electrical",
+      "description": "Ideal DC voltage source. Supplies unlimited power at a fixed voltage (placeholder physics).",
+      "ports": [
+        { "id": "terminal", "name": "Electric Terminal", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "sig_voltage", "name": "Voltage", "direction": "output", "kind": "signal", "unitGroup": "Voltage" },
+        { "id": "sig_power", "name": "Supplied Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "voltage_V", "label": "Nominal Voltage", "unit": "V", "default": 400, "type": "number" }
+      ]
+    },
+    {
+      "id": "electric.node",
+      "category": "Base Electric",
+      "name": "Electric Node",
+      "icon": "circle-dot",
+      "domain": "electrical",
+      "description": "Ideal electrical junction. Sums power demand from all connected branches (placeholder physics).",
+      "ports": [
+        { "id": "t1", "name": "Terminal 1", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "t2", "name": "Terminal 2", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "t3", "name": "Terminal 3", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "t4", "name": "Terminal 4", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "t5", "name": "Terminal 5", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "sig_power", "name": "Throughput Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": []
+    },
+    {
+      "id": "electric.constant_drive",
+      "category": "Base Electric",
+      "name": "Constant Drive",
+      "icon": "plug",
+      "domain": "electrical",
+      "description": "Constant electrical load. Draws a fixed power, optionally overridden by a signal input.",
+      "ports": [
+        { "id": "terminal", "name": "Electric Terminal", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "sig_demand_in", "name": "Power demand", "direction": "input", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_power", "name": "Drawn Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "power_kW", "label": "Constant Power Draw", "unit": "kW", "default": 10, "type": "number" }
+      ]
+    },
+    {
+      "id": "battery.generic",
+      "category": "Battery",
+      "name": "Generic Battery",
+      "icon": "battery-charging",
+      "domain": "electrical",
+      "description": "SOC-based battery with simple internal-resistance model. Open-circuit voltage varies linearly with SOC (placeholder physics).",
+      "ports": [
+        { "id": "vs1", "name": "Voltage Source 1", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "vs2", "name": "Voltage Source 2", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "sig_soc", "name": "SOC", "direction": "output", "kind": "signal", "unitGroup": "No Unit" },
+        { "id": "sig_voltage", "name": "Terminal Voltage", "direction": "output", "kind": "signal", "unitGroup": "Voltage" },
+        { "id": "sig_current", "name": "Current", "direction": "output", "kind": "signal", "unitGroup": "Current" },
+        { "id": "sig_power", "name": "Discharge Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "capacity_kWh", "label": "Usable Capacity", "unit": "kWh", "default": 120, "type": "number" },
+        { "key": "nominal_voltage_V", "label": "Nominal Voltage", "unit": "V", "default": 400, "type": "number" },
+        { "key": "internal_resistance_ohm", "label": "Internal Resistance", "unit": "Ω", "default": 0.05, "type": "number" },
+        { "key": "initial_soc_pct", "label": "Initial SOC", "unit": "%", "default": 90, "type": "number" },
+        { "key": "min_soc_pct", "label": "Minimum SOC", "unit": "%", "default": 10, "type": "number" }
+      ]
+    },
+    {
+      "id": "motor.emotor",
+      "category": "Motor",
+      "name": "E-Motor",
+      "icon": "fan",
+      "domain": "electrical",
+      "description": "Electric machine with a flat efficiency model and power limit (placeholder physics; no efficiency map).",
+      "ports": [
+        { "id": "terminal", "name": "Electric Terminal", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "shaft", "name": "Mechanical Shaft", "direction": "bidirectional", "kind": "mechanical", "unitGroup": "Power" },
+        { "id": "sig_demand_in", "name": "Power demand", "direction": "input", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_mech_power", "name": "Mechanical Power", "direction": "output", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_elec_power", "name": "Electrical Power", "direction": "output", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_losses", "name": "Losses", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "max_power_kW", "label": "Maximum Power", "unit": "kW", "default": 150, "type": "number" },
+        { "key": "efficiency_pct", "label": "Efficiency", "unit": "%", "default": 94, "type": "number" }
+      ]
+    },
+    {
+      "id": "controller.dcdc",
+      "category": "Electric Controllers",
+      "name": "DC-DC Converter",
+      "icon": "sliders-horizontal",
+      "domain": "electrical",
+      "description": "DC-DC converter with constant conversion efficiency (placeholder physics).",
+      "ports": [
+        { "id": "terminal_a", "name": "Terminal A (HV in)", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "terminal_b", "name": "Terminal B (out)", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" },
+        { "id": "sig_power_in", "name": "Power In", "direction": "output", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_power_out", "name": "Power Out", "direction": "output", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_losses", "name": "Losses", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "efficiency_pct", "label": "Conversion Efficiency", "unit": "%", "default": 97, "type": "number" },
+        { "key": "output_voltage_V", "label": "Output Voltage", "unit": "V", "default": 800, "type": "number" }
+      ]
+    },
+    {
+      "id": "propulsion.propeller",
+      "category": "Vehicles / Propulsion",
+      "name": "Propeller",
+      "icon": "loader-pinwheel",
+      "domain": "mechanical",
+      "description": "Propeller load. Converts a thrust-power demand into shaft-power demand via a fixed propulsive efficiency (placeholder physics).",
+      "ports": [
+        { "id": "shaft", "name": "Mechanical Shaft", "direction": "bidirectional", "kind": "mechanical", "unitGroup": "Power" },
+        { "id": "sig_demand_in", "name": "Power demand", "direction": "input", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_thrust_power", "name": "Thrust Power", "direction": "output", "kind": "signal", "unitGroup": "Power" },
+        { "id": "sig_shaft_power", "name": "Shaft Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "prop_efficiency_pct", "label": "Propulsive Efficiency", "unit": "%", "default": 80, "type": "number" },
+        { "key": "diameter_m", "label": "Diameter", "unit": "m", "default": 2.0, "type": "number" },
+        { "key": "power_demand_kW", "label": "Fallback Power Demand", "unit": "kW", "default": 75, "type": "number" }
+      ]
+    },
+    {
+      "id": "propulsion.wheel",
+      "category": "Vehicles / Propulsion",
+      "name": "Wheel",
+      "icon": "circle",
+      "domain": "mechanical",
+      "description": "Road-load wheel. Computes traction power from a vehicle-speed signal using rolling resistance and aero drag (placeholder physics).",
+      "ports": [
+        { "id": "shaft", "name": "Mechanical Shaft", "direction": "bidirectional", "kind": "mechanical", "unitGroup": "Power" },
+        { "id": "sig_speed_in", "name": "Vehicle speed", "direction": "input", "kind": "signal", "unitGroup": "Velocity" },
+        { "id": "sig_traction_power", "name": "Traction Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "vehicle_mass_kg", "label": "Vehicle Mass (share)", "unit": "kg", "default": 1500, "type": "number" },
+        { "key": "rolling_resistance", "label": "Rolling Resistance Coeff.", "default": 0.012, "type": "number" },
+        { "key": "cda_m2", "label": "Drag Area (CdA)", "unit": "m²", "default": 0.6, "type": "number" },
+        { "key": "radius_m", "label": "Wheel Radius", "unit": "m", "default": 0.3, "type": "number" }
+      ]
+    },
+    {
+      "id": "mech.shaft",
+      "category": "General Rotational Mechanics",
+      "name": "Shaft",
+      "icon": "minus",
+      "domain": "mechanical",
+      "description": "Rigid shaft. Passes torque/speed through with optional mechanical efficiency (placeholder physics).",
+      "ports": [
+        { "id": "flange_a", "name": "Flange A", "direction": "bidirectional", "kind": "mechanical", "unitGroup": "Power" },
+        { "id": "flange_b", "name": "Flange B", "direction": "bidirectional", "kind": "mechanical", "unitGroup": "Power" },
+        { "id": "sig_power", "name": "Transmitted Power", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "efficiency_pct", "label": "Mechanical Efficiency", "unit": "%", "default": 100, "type": "number" }
+      ]
+    },
+    {
+      "id": "signal.constant",
+      "category": "Signal Source",
+      "name": "Constant",
+      "icon": "equal",
+      "domain": "signal",
+      "description": "Constant signal source.",
+      "ports": [
+        { "id": "sig_out", "name": "Output", "direction": "output", "kind": "signal", "unitGroup": "No Unit" }
+      ],
+      "parameters": [
+        { "key": "value", "label": "Value", "default": 50, "type": "number" }
+      ]
+    },
+    {
+      "id": "signal.driving_task",
+      "category": "Signal Source",
+      "name": "Driving Task",
+      "icon": "route",
+      "domain": "signal",
+      "description": "Time-based demand profile (piecewise-linear). Points are given as 't:value' pairs separated by ';'.",
+      "ports": [
+        { "id": "sig_demand", "name": "Demand", "direction": "output", "kind": "signal", "unitGroup": "Power" }
+      ],
+      "parameters": [
+        { "key": "profile", "label": "Profile (t:value; …)", "default": "0:20; 60:100; 300:70; 540:30; 600:10", "type": "string" },
+        { "key": "scale_pct", "label": "Scale", "unit": "%", "default": 100, "type": "number" },
+        { "key": "repeat", "label": "Repeat Profile", "default": false, "type": "boolean" }
+      ]
+    },
+    {
+      "id": "boundary.ground",
+      "category": "Boundaries",
+      "name": "Ground",
+      "icon": "anchor",
+      "domain": "electrical",
+      "description": "Electrical ground reference. No power flow (placeholder).",
+      "ports": [
+        { "id": "terminal", "name": "Terminal", "direction": "bidirectional", "kind": "electrical", "unitGroup": "Power" }
+      ],
+      "parameters": []
+    },
+    {
+      "id": "boundary.ambient",
+      "category": "Boundaries",
+      "name": "Ambient",
+      "icon": "cloud-sun",
+      "domain": "thermal",
+      "description": "Ambient environment boundary condition (placeholder — no thermal solver in v1).",
+      "ports": [
+        { "id": "thermal", "name": "Thermal Port", "direction": "bidirectional", "kind": "thermal", "unitGroup": "Temperature" }
+      ],
+      "parameters": [
+        { "key": "temperature_C", "label": "Temperature", "unit": "°C", "default": 20, "type": "number" },
+        { "key": "pressure_kPa", "label": "Pressure", "unit": "kPa", "default": 101.3, "type": "number" }
+      ]
+    },
+    {
+      "id": "container.system",
+      "category": "Containers",
+      "name": "System",
+      "icon": "box",
+      "domain": "signal",
+      "description": "Sub-system container. Double-click to drill into its child topology. Organizational in v1 — physical connections do not cross the boundary; use the Data Bus for signals.",
+      "ports": [],
+      "parameters": []
+    }
+  ]
+}
