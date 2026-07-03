@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+:root {
+  --ss-accent: #2f6fb3;
+  --ss-accent-soft: #dce9f7;
+  --ss-chrome: #eceff3;
+  --ss-border: #c9cfd8;
+  --ss-panel: #ffffff;
+  --ss-text: #24292f;
+  --ss-text-dim: #6b7280;
+  font-size: 13px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+  color: var(--ss-text);
+  background: var(--ss-chrome);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- scrollbars (dense engineering-tool look) ---- */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c2c8d2;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #9aa2af;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- dockview theme tuning ---- */
+.dockview-theme-ss {
+  --dv-background-color: var(--ss-chrome);
+  --dv-paneview-active-outline-color: var(--ss-accent);
+  --dv-tabs-and-actions-container-background-color: var(--ss-chrome);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--ss-panel);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--ss-chrome);
+  --dv-inactivegroup-visiblepanel-tab-background-color: #f6f7f9;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--ss-chrome);
+  --dv-tab-divider-color: var(--ss-border);
+  --dv-activegroup-visiblepanel-tab-color: var(--ss-text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--ss-text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--ss-text);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--ss-text-dim);
+  --dv-separator-border: var(--ss-border);
+  --dv-paneview-header-border-color: var(--ss-border);
+  --dv-group-view-background-color: var(--ss-panel);
+  --dv-tabs-and-actions-container-height: 30px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-drag-over-background-color: rgba(47, 111, 179, 0.18);
+  --dv-drag-over-border-color: var(--ss-accent);
+  --dv-tab-close-icon-color: var(--ss-text-dim);
+  --dv-icon-hover-background-color: #d8dde4;
+  --dv-floating-box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
+  --dv-active-sash-color: var(--ss-accent);
+}
+.dockview-theme-ss .dv-tab {
+  border-top: 2px solid transparent;
+}
+.dockview-theme-ss .dv-tab.dv-active-tab {
+  border-top: 2px solid var(--ss-accent);
+}
+
+/* ---- React Flow tuning ---- */
+.react-flow__attribution {
+  font-size: 9px;
+  opacity: 0.6;
+}
+.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #5b6472;
+  background: #fff;
+  border-radius: 2px;
+}
+.react-flow__handle.ss-handle-electrical {
+  border-color: #d97706;
+  background: #fde68a;
+  border-radius: 50%;
+}
+.react-flow__handle.ss-handle-mechanical {
+  border-color: #374151;
+  background: #d1d5db;
+}
+.react-flow__handle.ss-handle-signal {
+  border-color: #0e7490;
+  background: #a5f3fc;
+  width: 8px;
+  height: 8px;
+}
+.react-flow__handle.ss-handle-thermal {
+  border-color: #b91c1c;
+  background: #fecaca;
+}
+.react-flow__edge-path {
+  stroke-width: 1.6;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 2.4;
+}
+
+/* ---- shared widget styles ---- */
+.ss-toolbtn {
+  @apply flex items-center gap-1 rounded px-1.5 py-1 text-[12px] text-[color:var(--ss-text)] hover:bg-[#dbe2ea] active:bg-[#cfd8e3] disabled:opacity-40 disabled:hover:bg-transparent;
+}
+.ss-input {
+  @apply rounded border border-[color:var(--ss-border)] bg-white px-1.5 py-0.5 text-[12px] outline-none focus:border-[color:var(--ss-accent)];
+}
+.ss-tree-row {
+  @apply flex w-full cursor-default items-center gap-1.5 truncate px-1.5 py-[3px] text-left text-[12px] hover:bg-[#eef2f7];
+}
+.ss-tree-row.selected {
+  background: var(--ss-accent-soft);
+  outline: 1px solid #b3cdea;
+}
+.ss-panel-toolbar {
+  @apply flex items-center gap-1 border-b border-[color:var(--ss-border)] bg-[#f6f7f9] px-1.5 py-1;
+}
+.ss-th {
+  @apply border-b border-[color:var(--ss-border)] bg-[#f2f4f7] px-2 py-1 text-left text-[11px] font-semibold text-[color:var(--ss-text-dim)];
+}
+.ss-td {
+  @apply border-b border-[#eef0f3] px-2 py-1 text-[12px];
+}

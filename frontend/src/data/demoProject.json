@@ -1,0 +1,68 @@
+{
+  "id": "fc-airplane",
+  "name": "FC Airplane",
+  "systems": [
+    {
+      "id": "sys-root",
+      "name": "FC Airplane",
+      "parentId": null,
+      "elements": [
+        { "id": "el-drivingtask", "componentDefId": "signal.driving_task", "label": "Flight Mission", "position": { "x": 40, "y": 40 }, "parameterOverrides": { "profile": "0:15; 30:110; 120:95; 420:70; 540:35; 600:12" } },
+        { "id": "el-battery", "componentDefId": "battery.generic", "label": "Main Battery", "position": { "x": 40, "y": 330 }, "parameterOverrides": { "capacity_kWh": 250, "nominal_voltage_V": 400, "internal_resistance_ohm": 0.01, "initial_soc_pct": 95 } },
+        { "id": "el-node", "componentDefId": "electric.node", "label": "HV Bus Node", "position": { "x": 330, "y": 350 }, "parameterOverrides": {} },
+        { "id": "el-dcdc-1", "componentDefId": "controller.dcdc", "label": "DC-DC Converter 1", "position": { "x": 600, "y": 60 }, "parameterOverrides": {} },
+        { "id": "el-dcdc-2", "componentDefId": "controller.dcdc", "label": "DC-DC Converter 2", "position": { "x": 600, "y": 260 }, "parameterOverrides": {} },
+        { "id": "el-dcdc-3", "componentDefId": "controller.dcdc", "label": "DC-DC Converter 3", "position": { "x": 600, "y": 460 }, "parameterOverrides": {} },
+        { "id": "el-dcdc-4", "componentDefId": "controller.dcdc", "label": "DC-DC Converter 4", "position": { "x": 600, "y": 660 }, "parameterOverrides": {} },
+        { "id": "el-motor-1", "componentDefId": "motor.emotor", "label": "E-Motor Propeller 1", "position": { "x": 880, "y": 60 }, "parameterOverrides": {} },
+        { "id": "el-motor-2", "componentDefId": "motor.emotor", "label": "E-Motor Propeller 2", "position": { "x": 880, "y": 260 }, "parameterOverrides": {} },
+        { "id": "el-motor-3", "componentDefId": "motor.emotor", "label": "E-Motor Propeller 3", "position": { "x": 880, "y": 460 }, "parameterOverrides": {} },
+        { "id": "el-motor-4", "componentDefId": "motor.emotor", "label": "E-Motor Propeller 4", "position": { "x": 880, "y": 660 }, "parameterOverrides": {} },
+        { "id": "el-prop-1", "componentDefId": "propulsion.propeller", "label": "Propeller 1", "position": { "x": 1160, "y": 60 }, "parameterOverrides": {} },
+        { "id": "el-prop-2", "componentDefId": "propulsion.propeller", "label": "Propeller 2", "position": { "x": 1160, "y": 260 }, "parameterOverrides": {} },
+        { "id": "el-prop-3", "componentDefId": "propulsion.propeller", "label": "Propeller 3", "position": { "x": 1160, "y": 460 }, "parameterOverrides": {} },
+        { "id": "el-prop-4", "componentDefId": "propulsion.propeller", "label": "Propeller 4", "position": { "x": 1160, "y": 660 }, "parameterOverrides": {} },
+        { "id": "el-sub-aux", "componentDefId": "container.system", "label": "Auxiliary System", "position": { "x": 40, "y": 560 }, "parameterOverrides": {}, "isSubSystem": true, "subSystemId": "sys-aux" }
+      ],
+      "connections": [
+        { "id": "c-bat-node", "sourceElementId": "el-battery", "sourcePortId": "vs1", "targetElementId": "el-node", "targetPortId": "t1" },
+        { "id": "c-node-dcdc1", "sourceElementId": "el-node", "sourcePortId": "t2", "targetElementId": "el-dcdc-1", "targetPortId": "terminal_a" },
+        { "id": "c-node-dcdc2", "sourceElementId": "el-node", "sourcePortId": "t3", "targetElementId": "el-dcdc-2", "targetPortId": "terminal_a" },
+        { "id": "c-node-dcdc3", "sourceElementId": "el-node", "sourcePortId": "t4", "targetElementId": "el-dcdc-3", "targetPortId": "terminal_a" },
+        { "id": "c-node-dcdc4", "sourceElementId": "el-node", "sourcePortId": "t5", "targetElementId": "el-dcdc-4", "targetPortId": "terminal_a" },
+        { "id": "c-dcdc1-motor1", "sourceElementId": "el-dcdc-1", "sourcePortId": "terminal_b", "targetElementId": "el-motor-1", "targetPortId": "terminal" },
+        { "id": "c-dcdc2-motor2", "sourceElementId": "el-dcdc-2", "sourcePortId": "terminal_b", "targetElementId": "el-motor-2", "targetPortId": "terminal" },
+        { "id": "c-dcdc3-motor3", "sourceElementId": "el-dcdc-3", "sourcePortId": "terminal_b", "targetElementId": "el-motor-3", "targetPortId": "terminal" },
+        { "id": "c-dcdc4-motor4", "sourceElementId": "el-dcdc-4", "sourcePortId": "terminal_b", "targetElementId": "el-motor-4", "targetPortId": "terminal" },
+        { "id": "c-motor1-prop1", "sourceElementId": "el-motor-1", "sourcePortId": "shaft", "targetElementId": "el-prop-1", "targetPortId": "shaft" },
+        { "id": "c-motor2-prop2", "sourceElementId": "el-motor-2", "sourcePortId": "shaft", "targetElementId": "el-prop-2", "targetPortId": "shaft" },
+        { "id": "c-motor3-prop3", "sourceElementId": "el-motor-3", "sourcePortId": "shaft", "targetElementId": "el-prop-3", "targetPortId": "shaft" },
+        { "id": "c-motor4-prop4", "sourceElementId": "el-motor-4", "sourcePortId": "shaft", "targetElementId": "el-prop-4", "targetPortId": "shaft" }
+      ]
+    },
+    {
+      "id": "sys-aux",
+      "name": "Auxiliary System",
+      "parentId": "sys-root",
+      "elements": [
+        { "id": "el-aux-batt", "componentDefId": "battery.generic", "label": "Aux Battery", "position": { "x": 80, "y": 160 }, "parameterOverrides": { "capacity_kWh": 12, "nominal_voltage_V": 48, "internal_resistance_ohm": 0.02, "initial_soc_pct": 100 } },
+        { "id": "el-aux-load", "componentDefId": "electric.constant_drive", "label": "Avionics Load", "position": { "x": 420, "y": 160 }, "parameterOverrides": { "power_kW": 3 } },
+        { "id": "el-aux-const", "componentDefId": "signal.constant", "label": "Avionics Demand", "position": { "x": 420, "y": 20 }, "parameterOverrides": { "value": 3 } }
+      ],
+      "connections": [
+        { "id": "c-auxbatt-load", "sourceElementId": "el-aux-batt", "sourcePortId": "vs1", "targetElementId": "el-aux-load", "targetPortId": "terminal" }
+      ]
+    }
+  ],
+  "dataBusConnections": [
+    { "id": "dbc-prop1", "element1Id": "el-drivingtask", "port1Id": "sig_demand", "element2Id": "el-prop-1", "port2Id": "sig_demand_in" },
+    { "id": "dbc-prop2", "element1Id": "el-drivingtask", "port1Id": "sig_demand", "element2Id": "el-prop-2", "port2Id": "sig_demand_in" },
+    { "id": "dbc-prop3", "element1Id": "el-drivingtask", "port1Id": "sig_demand", "element2Id": "el-prop-3", "port2Id": "sig_demand_in" },
+    { "id": "dbc-prop4", "element1Id": "el-drivingtask", "port1Id": "sig_demand", "element2Id": "el-prop-4", "port2Id": "sig_demand_in" },
+    { "id": "dbc-aux", "element1Id": "el-aux-const", "port1Id": "sig_out", "element2Id": "el-aux-load", "port2Id": "sig_demand_in" }
+  ],
+  "cases": [
+    { "id": "case-mission", "name": "Design Mission (10 min)", "duration": 600, "timeStep": 1 },
+    { "id": "case-hover", "name": "Short Hover (2 min)", "duration": 120, "timeStep": 0.5 }
+  ]
+}
