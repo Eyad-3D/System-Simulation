@@ -1,0 +1,1959 @@
+{
+  "components": [
+    {
+      "id": "vehicle.body",
+      "category": "Vehicle",
+      "name": "Vehicle",
+      "icon": "car",
+      "domain": "mechanical",
+      "description": "Longitudinal vehicle body: mass, aerodynamics (drag coefficient × frontal area) and road grade. Binds to all Wheel elements automatically — no canvas wiring needed for the body itself. Pair it with a Driver element to follow a speed profile.",
+      "ports": [
+        {
+          "id": "sig_grade_in",
+          "name": "Road Grade",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Vehicle Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Velocity"
+        },
+        {
+          "id": "sig_distance",
+          "name": "Distance",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Distance"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "mass_kg",
+          "label": "Vehicle Mass",
+          "unit": "kg",
+          "default": 1800,
+          "type": "number"
+        },
+        {
+          "key": "cd",
+          "label": "Drag Coefficient (Cd)",
+          "unit": "-",
+          "default": 0.28,
+          "type": "number"
+        },
+        {
+          "key": "frontal_area_m2",
+          "label": "Frontal Area",
+          "unit": "m²",
+          "default": 2.2,
+          "type": "number"
+        },
+        {
+          "key": "initial_speed_kmh",
+          "label": "Initial Speed",
+          "unit": "km/h",
+          "default": 0,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "driver.driver",
+      "category": "Vehicle",
+      "name": "Driver",
+      "icon": "user",
+      "domain": "signal",
+      "description": "Speed-following driver (PI controller). Wire a target-speed profile into Target Speed and the Vehicle's speed into Actual Speed; the driver outputs a traction command in [-1, 1] and a friction-brake command, blending recuperation (motor generator quadrant, battery charge limit) before the brakes per the Recuperation Weight.",
+      "ports": [
+        {
+          "id": "sig_target_in",
+          "name": "Target Speed",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "Velocity"
+        },
+        {
+          "id": "sig_speed_in",
+          "name": "Actual Speed",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "Velocity"
+        },
+        {
+          "id": "sig_traction_cmd",
+          "name": "Traction Command",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_brake_cmd",
+          "name": "Brake Command",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_accel_pedal",
+          "name": "Accel Pedal (raw)",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_brake_pedal",
+          "name": "Brake Pedal (raw)",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "driver_kp",
+          "label": "P Gain",
+          "unit": "1/(km/h)",
+          "default": 0.35,
+          "type": "number"
+        },
+        {
+          "key": "driver_ki",
+          "label": "I Gain",
+          "unit": "1/(km/h·s)",
+          "default": 0.08,
+          "type": "number"
+        },
+        {
+          "key": "regen_weight_pct",
+          "label": "Recuperation Weight",
+          "unit": "%",
+          "default": 80,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "battery.generic",
+      "category": "Battery",
+      "name": "HV Battery Pack",
+      "icon": "battery-charging",
+      "domain": "electrical",
+      "description": "Equivalent-circuit battery pack: OCV(SOC) lookup table with series resistance R0 and an optional RC pair for voltage transients (RC disabled when either RC parameter is 0). SOC integrates over discharge and recuperation; charging power is limited by the maximum charge power.",
+      "ports": [
+        {
+          "id": "vs1",
+          "name": "Voltage Source 1",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "vs2",
+          "name": "Voltage Source 2",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_soc",
+          "name": "SOC",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_voltage",
+          "name": "Terminal Voltage",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Voltage"
+        },
+        {
+          "id": "sig_current",
+          "name": "Current",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Current"
+        },
+        {
+          "id": "sig_power",
+          "name": "Discharge Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "capacity_kWh",
+          "label": "Usable Capacity",
+          "unit": "kWh",
+          "default": 60,
+          "type": "number"
+        },
+        {
+          "key": "ocv_table",
+          "label": "Open-Circuit Voltage",
+          "unit": "V",
+          "type": "table1d",
+          "axes": [{ "name": "SOC", "unit": "%" }],
+          "default": {
+            "0": 300,
+            "10": 318,
+            "20": 330,
+            "40": 342,
+            "60": 352,
+            "80": 362,
+            "90": 368,
+            "100": 376
+          }
+        },
+        {
+          "key": "internal_resistance_ohm",
+          "label": "Series Resistance R0",
+          "unit": "Ω",
+          "default": 0.08,
+          "type": "number"
+        },
+        {
+          "key": "rc_resistance_ohm",
+          "label": "RC Pair Resistance R1",
+          "unit": "Ω",
+          "default": 0,
+          "type": "number"
+        },
+        {
+          "key": "rc_time_constant_s",
+          "label": "RC Pair Time Constant",
+          "unit": "s",
+          "default": 0,
+          "type": "number"
+        },
+        {
+          "key": "max_charge_power_kW",
+          "label": "Max Charge Power",
+          "unit": "kW",
+          "default": 120,
+          "type": "number"
+        },
+        {
+          "key": "initial_soc_pct",
+          "label": "Initial SOC",
+          "unit": "%",
+          "default": 90,
+          "type": "number"
+        },
+        {
+          "key": "min_soc_pct",
+          "label": "Minimum SOC",
+          "unit": "%",
+          "default": 10,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "motor.emotor",
+      "category": "E-Drive",
+      "name": "E-Motor",
+      "icon": "fan",
+      "domain": "electrical",
+      "description": "Electric machine with voltage-dependent full-load torque map, power-loss map (motor + inverter) and drag torque. Motoring and generating (recuperation) quadrants; generator limit mirrors the full-load map scaled by the Q4 scale parameter. Traction command input is a normalized demand in [-1, 1].",
+      "ports": [
+        {
+          "id": "terminal",
+          "name": "Electric Terminal",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "shaft",
+          "name": "Mechanical Shaft",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_demand_in",
+          "name": "Traction Command",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Shaft Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        },
+        {
+          "id": "sig_torque",
+          "name": "Shaft Torque",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_mech_power",
+          "name": "Mechanical Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_elec_power",
+          "name": "Electrical Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_losses",
+          "name": "Losses",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "full_load_torque",
+          "label": "Full-Load Torque",
+          "unit": "N·m",
+          "type": "table2d",
+          "axes": [
+            { "name": "Voltage", "unit": "V" },
+            { "name": "Speed", "unit": "1/min" }
+          ],
+          "default": {
+            "250": {
+              "0": 345.6,
+              "1000": 345.6,
+              "2000": 345.6,
+              "2500": 314.2,
+              "3000": 261.9,
+              "3500": 224.5,
+              "4000": 196.4,
+              "4500": 174.6,
+              "5000": 157.1,
+              "6000": 130.9,
+              "7000": 112.2,
+              "8000": 98.2,
+              "9000": 87.3,
+              "10000": 78.6,
+              "11000": 71.4,
+              "12000": 65.5
+            },
+            "330": {
+              "0": 345.6,
+              "1000": 345.6,
+              "2000": 345.6,
+              "2500": 345.6,
+              "3000": 345.6,
+              "3500": 295.2,
+              "4000": 259.2,
+              "4500": 230.4,
+              "5000": 205.9,
+              "6000": 172.8,
+              "7000": 148.1,
+              "8000": 129.6,
+              "9000": 115.2,
+              "10000": 103.7,
+              "11000": 94.3,
+              "12000": 86.4
+            },
+            "396": {
+              "0": 345.6,
+              "1000": 345.6,
+              "2000": 345.6,
+              "2500": 345.6,
+              "3000": 345.6,
+              "3500": 345.6,
+              "4000": 314.2,
+              "4500": 279.3,
+              "5000": 251.3,
+              "6000": 209.5,
+              "7000": 179.5,
+              "8000": 157.1,
+              "9000": 139.6,
+              "10000": 125.7,
+              "11000": 114.3,
+              "12000": 104.7
+            }
+          }
+        },
+        {
+          "key": "power_loss",
+          "label": "Power Loss (Motor + Inverter)",
+          "unit": "kW",
+          "type": "table2d",
+          "axes": [
+            { "name": "Speed", "unit": "1/min" },
+            { "name": "Torque", "unit": "N·m" }
+          ],
+          "default": {
+            "0": { "0": 0.2, "100": 1.6, "200": 3.2, "350": 8.5 },
+            "3000": { "0": 0.8, "100": 2.0, "200": 4.2, "350": 10.4 },
+            "6000": { "0": 1.8, "100": 2.8, "200": 5.6, "350": 12.8 },
+            "9000": { "0": 3.0, "100": 4.0, "200": 7.4, "350": 15.6 },
+            "12000": { "0": 4.6, "100": 5.6, "200": 9.6, "350": 18.9 }
+          }
+        },
+        {
+          "key": "drag_torque",
+          "label": "Drag Torque",
+          "unit": "N·m",
+          "type": "table1d",
+          "axes": [{ "name": "Speed", "unit": "1/min" }],
+          "default": {
+            "0": 0,
+            "3000": 1.2,
+            "6000": 2.6,
+            "9000": 4.2,
+            "12000": 6.0
+          }
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Rotor Inertia",
+          "unit": "kg·m²",
+          "default": 0.045,
+          "type": "number"
+        },
+        {
+          "key": "q4_torque_scale_pct",
+          "label": "Generator Torque Limit Scale",
+          "unit": "%",
+          "default": 100,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "controller.dcdc",
+      "category": "E-Drive",
+      "name": "DC-DC Converter",
+      "icon": "sliders-horizontal",
+      "domain": "electrical",
+      "description": "DC-DC converter with constant conversion efficiency. Unidirectional: draws at Terminal A, supplies at Terminal B. When Terminal B feeds a bus with a battery, the converter runs at its power setpoint (parameter or signal) and the battery balances the rest — the fuel-cell hybrid pattern.",
+      "ports": [
+        {
+          "id": "terminal_a",
+          "name": "Terminal A (HV in)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "terminal_b",
+          "name": "Terminal B (out)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_setpoint_in",
+          "name": "Power Setpoint",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_power_in",
+          "name": "Power In",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_power_out",
+          "name": "Power Out",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_losses",
+          "name": "Losses",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "efficiency_pct",
+          "label": "Conversion Efficiency",
+          "unit": "%",
+          "default": 97,
+          "type": "number"
+        },
+        {
+          "key": "output_voltage_V",
+          "label": "Output Voltage",
+          "unit": "V",
+          "default": 800,
+          "type": "number"
+        },
+        {
+          "key": "power_setpoint_kW",
+          "label": "Power Setpoint (battery-bus mode)",
+          "unit": "kW",
+          "default": 0,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "electric.voltage_source",
+      "category": "Base Electric",
+      "name": "Voltage Source",
+      "icon": "zap",
+      "domain": "electrical",
+      "description": "Ideal DC voltage source. Supplies unlimited power at a fixed voltage.",
+      "ports": [
+        {
+          "id": "terminal",
+          "name": "Electric Terminal",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_voltage",
+          "name": "Voltage",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Voltage"
+        },
+        {
+          "id": "sig_power",
+          "name": "Supplied Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "voltage_V",
+          "label": "Nominal Voltage",
+          "unit": "V",
+          "default": 400,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "electric.node",
+      "category": "Base Electric",
+      "name": "Electric Node",
+      "icon": "circle-dot",
+      "domain": "electrical",
+      "description": "Ideal electrical junction / bus bar. All connected terminals share one voltage; power balances across the branches.",
+      "ports": [
+        {
+          "id": "t1",
+          "name": "Terminal 1",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "t2",
+          "name": "Terminal 2",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "t3",
+          "name": "Terminal 3",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "t4",
+          "name": "Terminal 4",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "t5",
+          "name": "Terminal 5",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_power",
+          "name": "Throughput Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": []
+    },
+    {
+      "id": "electric.constant_drive",
+      "category": "Base Electric",
+      "name": "Power Consumer",
+      "icon": "plug",
+      "domain": "electrical",
+      "description": "Constant electrical load (auxiliaries, HVAC, LV net). Draws a fixed power, optionally overridden by a signal input.",
+      "ports": [
+        {
+          "id": "terminal",
+          "name": "Electric Terminal",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "sig_demand_in",
+          "name": "Power demand",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_power",
+          "name": "Drawn Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "power_kW",
+          "label": "Constant Power Draw",
+          "unit": "kW",
+          "default": 2.5,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "boundary.ground",
+      "category": "Base Electric",
+      "name": "Ground",
+      "icon": "anchor",
+      "domain": "electrical",
+      "description": "Electrical ground / return rail reference. Carries no power in the solve; connect the low side of electrical components here.",
+      "ports": [
+        {
+          "id": "t1",
+          "name": "Terminal 1",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "t2",
+          "name": "Terminal 2",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "t3",
+          "name": "Terminal 3",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        }
+      ],
+      "parameters": []
+    },
+    {
+      "id": "mech.shaft",
+      "category": "Driveline",
+      "name": "Shaft",
+      "icon": "minus",
+      "domain": "mechanical",
+      "description": "Rigid shaft. Passes torque/speed through with optional mechanical efficiency and rotational inertia.",
+      "ports": [
+        {
+          "id": "flange_a",
+          "name": "Flange A",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_b",
+          "name": "Flange B",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_power",
+          "name": "Transmitted Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "efficiency_pct",
+          "label": "Mechanical Efficiency",
+          "unit": "%",
+          "default": 100,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 0.01,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.final_drive",
+      "category": "Driveline",
+      "name": "Final Drive",
+      "icon": "cog",
+      "domain": "mechanical",
+      "description": "Single-ratio reduction gear. Output torque = input torque × ratio × efficiency (direction-aware); output speed = input speed / ratio.",
+      "ports": [
+        {
+          "id": "flange_in",
+          "name": "Flange In",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_out",
+          "name": "Flange Out",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_power",
+          "name": "Transmitted Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_speed_out",
+          "name": "Output Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "ratio",
+          "label": "Transmission Ratio",
+          "unit": "-",
+          "default": 9.7,
+          "type": "number"
+        },
+        {
+          "key": "inertia_in_kgm2",
+          "label": "Moment of Inertia In",
+          "unit": "kg·m²",
+          "default": 0.01,
+          "type": "number"
+        },
+        {
+          "key": "inertia_out_kgm2",
+          "label": "Moment of Inertia Out",
+          "unit": "kg·m²",
+          "default": 0.02,
+          "type": "number"
+        },
+        {
+          "key": "efficiency_pct",
+          "label": "Efficiency",
+          "unit": "%",
+          "default": 97,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.differential",
+      "category": "Driveline",
+      "name": "Differential",
+      "icon": "git-fork",
+      "domain": "mechanical",
+      "description": "Splits one mechanical input to two outputs. Unlocked (open): equal torque to both sides, output speeds free (input speed = mean of outputs). Locked: both outputs forced to the same speed, torque split follows the grip on each side.",
+      "ports": [
+        {
+          "id": "flange_in",
+          "name": "Flange In",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_out_a",
+          "name": "Flange Out A",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "flange_out_b",
+          "name": "Flange Out B",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_torque_a",
+          "name": "Torque Out A",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_torque_b",
+          "name": "Torque Out B",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_speed_in",
+          "name": "Input Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "locked",
+          "label": "Locked",
+          "unit": "-",
+          "default": false,
+          "type": "boolean"
+        },
+        {
+          "key": "ratio",
+          "label": "Ratio",
+          "unit": "-",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "key": "efficiency_pct",
+          "label": "Efficiency",
+          "unit": "%",
+          "default": 98,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 0.015,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.node",
+      "category": "Driveline",
+      "name": "Mechanical Node",
+      "icon": "asterisk",
+      "domain": "mechanical",
+      "description": "Rigid mechanical junction. All connected flanges rotate at the same speed; torques sum. Use one per wheel corner to attach brake and wheel to the same axle end.",
+      "ports": [
+        {
+          "id": "f1",
+          "name": "Flange 1",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "f2",
+          "name": "Flange 2",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "f3",
+          "name": "Flange 3",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "f4",
+          "name": "Flange 4",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Node Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": []
+    },
+    {
+      "id": "propulsion.wheel",
+      "category": "Wheels & Brakes",
+      "name": "Wheel",
+      "icon": "circle",
+      "domain": "mechanical",
+      "description": "Wheel with longitudinal slip tire model: traction force = slip stiffness × slip × normal load, saturated at μ × normal load. Normal load comes from the Vehicle mass × this wheel's load share. Rolling resistance acts on the vehicle body.",
+      "ports": [
+        {
+          "id": "shaft",
+          "name": "Mechanical Shaft",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Wheel Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        },
+        {
+          "id": "sig_slip",
+          "name": "Longitudinal Slip",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_force",
+          "name": "Traction Force",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Force"
+        },
+        {
+          "id": "sig_torque",
+          "name": "Drive Torque",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "radius_m",
+          "label": "Wheel Radius",
+          "unit": "m",
+          "default": 0.33,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 1.2,
+          "type": "number"
+        },
+        {
+          "key": "vehicle_load_share_pct",
+          "label": "Vehicle Load Share",
+          "unit": "%",
+          "default": 25,
+          "type": "number"
+        },
+        {
+          "key": "mu",
+          "label": "Friction Coefficient μ",
+          "unit": "-",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "key": "slip_stiffness",
+          "label": "Slip Stiffness",
+          "unit": "-",
+          "default": 10,
+          "type": "number"
+        },
+        {
+          "key": "rolling_resistance",
+          "label": "Rolling Resistance Coeff.",
+          "unit": "-",
+          "default": 0.012,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.brake",
+      "category": "Wheels & Brakes",
+      "name": "Brake",
+      "icon": "disc",
+      "domain": "mechanical",
+      "description": "Friction brake. Applies braking torque = command × maximum torque, opposing rotation (no torque reversal at standstill).",
+      "ports": [
+        {
+          "id": "flange",
+          "name": "Flange",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "sig_demand_in",
+          "name": "Brake Command",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_torque",
+          "name": "Brake Torque",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "max_torque_Nm",
+          "label": "Maximum Brake Torque",
+          "unit": "N·m",
+          "default": 1400,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 0.6,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "propulsion.propeller",
+      "category": "Propulsion",
+      "name": "Propeller",
+      "icon": "loader-pinwheel",
+      "domain": "mechanical",
+      "description": "Quadratic mechanical load: torque = reference torque × (speed / reference speed)². Placeholder for aircraft/marine loads until a full aircraft body model exists.",
+      "ports": [
+        {
+          "id": "shaft",
+          "name": "Mechanical Shaft",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Shaft Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        },
+        {
+          "id": "sig_shaft_power",
+          "name": "Shaft Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "torque_ref_Nm",
+          "label": "Torque at Reference Speed",
+          "unit": "N·m",
+          "default": 500,
+          "type": "number"
+        },
+        {
+          "key": "ref_speed_rpm",
+          "label": "Reference Speed",
+          "unit": "1/min",
+          "default": 2000,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 2.5,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "signal.driving_task",
+      "category": "Driver & Signals",
+      "name": "Driving Task",
+      "icon": "route",
+      "domain": "signal",
+      "description": "Time-based target-speed profile (piecewise-linear). Points are given as 't:speed' pairs separated by ';'. Wire the output to the Vehicle's Target Speed input.",
+      "ports": [
+        {
+          "id": "sig_demand",
+          "name": "Target Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Velocity"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "profile",
+          "label": "Profile (t:speed; …)",
+          "unit": "-",
+          "default": "0:0; 30:50; 120:50; 150:80; 300:80; 330:30; 480:30; 540:0; 600:0",
+          "type": "string"
+        },
+        {
+          "key": "scale_pct",
+          "label": "Scale",
+          "unit": "%",
+          "default": 100,
+          "type": "number"
+        },
+        {
+          "key": "repeat",
+          "label": "Repeat Profile",
+          "unit": "-",
+          "default": false,
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "signal.constant",
+      "category": "Driver & Signals",
+      "name": "Constant",
+      "icon": "equal",
+      "domain": "signal",
+      "description": "Constant signal source.",
+      "ports": [
+        {
+          "id": "sig_out",
+          "name": "Output",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "value",
+          "label": "Value",
+          "unit": "-",
+          "default": 50,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "signal.script",
+      "category": "Driver & Signals",
+      "name": "Script (Function)",
+      "icon": "code",
+      "domain": "signal",
+      "allowDynamicPorts": true,
+      "description": "User-written Python function evaluated every step. Add named signal input/output ports in the Properties panel; the step() function receives inputs and a persistent state dict and returns a dict of output values. Use for hybrid control strategies, custom recuperation logic, signal math, etc.",
+      "ports": [],
+      "parameters": [
+        {
+          "key": "code",
+          "label": "Python Code",
+          "unit": "-",
+          "type": "code",
+          "default": "def step(t, dt, inputs, state, params):\n    # inputs: dict of input-port values (by port id)\n    # state:  dict persisting across steps\n    # return: dict of output-port values (by port id)\n    return {}\n"
+        }
+      ]
+    },
+    {
+      "id": "signal.monitor",
+      "category": "Driver & Signals",
+      "name": "Monitor",
+      "icon": "gauge",
+      "domain": "signal",
+      "allowDynamicPorts": true,
+      "description": "Display-only monitor. Add signal input ports and wire any signals into them; during and after a run the Monitors panel shows live readouts and sparklines for every wired input.",
+      "ports": [],
+      "parameters": []
+    },
+    {
+      "id": "boundary.ambient",
+      "category": "Boundaries",
+      "name": "Ambient",
+      "icon": "cloud-sun",
+      "domain": "thermal",
+      "description": "Ambient environment boundary condition (no thermal solver yet).",
+      "ports": [
+        {
+          "id": "thermal",
+          "name": "Thermal Port",
+          "direction": "bidirectional",
+          "kind": "thermal",
+          "unitGroup": "Temperature",
+          "side": "right"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "temperature_C",
+          "label": "Temperature",
+          "unit": "°C",
+          "default": 20,
+          "type": "number"
+        },
+        {
+          "key": "pressure_kPa",
+          "label": "Pressure",
+          "unit": "kPa",
+          "default": 101.3,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "container.system",
+      "category": "Containers",
+      "name": "System",
+      "icon": "box",
+      "domain": "signal",
+      "description": "Sub-system container. Double-click to drill into its child topology. Organizational — physical connections do not cross the boundary; use the Data Bus for signals.",
+      "ports": [],
+      "parameters": []
+    },
+    {
+      "id": "engine.combustion",
+      "category": "ICE Powertrain",
+      "name": "Combustion Engine",
+      "icon": "flame",
+      "domain": "mechanical",
+      "description": "Internal combustion engine: full-load torque curve, drag (motoring) torque, and a fuel-consumption map (speed × torque → kg/h). Built-in idle governor holds idle speed when enabled. Enable input allows hybrid start/stop control (unwired = always on); consumes from the Fuel Tank automatically.",
+      "ports": [
+        {
+          "id": "shaft",
+          "name": "Mechanical Shaft",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_throttle_in",
+          "name": "Throttle",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_on_in",
+          "name": "Enable",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_speed",
+          "name": "Engine Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        },
+        {
+          "id": "sig_torque",
+          "name": "Engine Torque",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_fuel_rate",
+          "name": "Fuel Rate",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Mass Flow"
+        },
+        {
+          "id": "sig_power",
+          "name": "Mechanical Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "full_load_torque",
+          "label": "Full-Load Torque",
+          "unit": "N·m",
+          "type": "table1d",
+          "axes": [{ "name": "Speed", "unit": "1/min" }],
+          "default": {
+            "800": 95,
+            "1000": 110,
+            "1500": 135,
+            "2000": 155,
+            "2500": 168,
+            "3000": 175,
+            "3500": 178,
+            "4000": 176,
+            "4500": 168,
+            "5000": 156,
+            "5500": 140,
+            "6000": 120
+          }
+        },
+        {
+          "key": "drag_torque",
+          "label": "Drag Torque",
+          "unit": "N·m",
+          "type": "table1d",
+          "axes": [{ "name": "Speed", "unit": "1/min" }],
+          "default": {
+            "0": 18,
+            "1000": 20,
+            "2000": 24,
+            "3000": 30,
+            "4000": 38,
+            "5000": 48,
+            "6000": 60
+          }
+        },
+        {
+          "key": "fuel_map",
+          "label": "Fuel Consumption Map",
+          "unit": "kg/h",
+          "type": "table2d",
+          "axes": [
+            { "name": "Speed", "unit": "1/min" },
+            { "name": "Torque", "unit": "N·m" }
+          ],
+          "default": {
+            "1000": { "0": 0.6, "50": 1.6, "100": 3.1, "150": 4.8, "175": 5.8 },
+            "2000": { "0": 0.9, "50": 3.0, "100": 5.8, "150": 8.7, "175": 10.2 },
+            "3000": { "0": 1.4, "50": 4.5, "100": 8.6, "150": 12.9, "175": 15.2 },
+            "4000": { "0": 2.1, "50": 6.2, "100": 11.7, "150": 17.5, "175": 20.6 },
+            "5000": { "0": 3.0, "50": 8.1, "100": 15.2, "150": 22.7, "175": 26.8 },
+            "6000": { "0": 4.2, "50": 10.4, "100": 19.2, "150": 28.6, "175": 33.8 }
+          }
+        },
+        {
+          "key": "idle_speed_rpm",
+          "label": "Idle Speed",
+          "unit": "1/min",
+          "default": 800,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 0.18,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "fuel.tank",
+      "category": "ICE Powertrain",
+      "name": "Fuel Tank",
+      "icon": "fuel",
+      "domain": "fluid",
+      "description": "Fuel reservoir. Combustion engines draw from it automatically; when it runs dry the engine shuts off. One tank per model.",
+      "ports": [
+        {
+          "id": "sig_level",
+          "name": "Fill Level",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_mass",
+          "name": "Fuel Mass",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Mass"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "capacity_kg",
+          "label": "Capacity",
+          "unit": "kg",
+          "default": 45,
+          "type": "number"
+        },
+        {
+          "key": "initial_fill_pct",
+          "label": "Initial Fill",
+          "unit": "%",
+          "default": 90,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.gearbox",
+      "category": "Driveline",
+      "name": "Gearbox",
+      "icon": "settings-2",
+      "domain": "mechanical",
+      "description": "Multi-speed gearbox. The ratio table maps gear number → ratio; the Gear Select signal picks the active gear (nearest defined gear wins, unwired = default gear). Shifts apply at recording-step boundaries.",
+      "ports": [
+        {
+          "id": "flange_in",
+          "name": "Flange In",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_out",
+          "name": "Flange Out",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_gear_in",
+          "name": "Gear Select",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_gear",
+          "name": "Active Gear",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_speed_out",
+          "name": "Output Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "ratios",
+          "label": "Gear Ratios",
+          "unit": "-",
+          "type": "table1d",
+          "axes": [{ "name": "Gear", "unit": "-" }],
+          "default": {
+            "1": 3.9,
+            "2": 2.4,
+            "3": 1.6,
+            "4": 1.15,
+            "5": 0.87,
+            "6": 0.7
+          }
+        },
+        {
+          "key": "default_gear",
+          "label": "Default Gear",
+          "unit": "-",
+          "default": 1,
+          "type": "number"
+        },
+        {
+          "key": "efficiency_pct",
+          "label": "Efficiency",
+          "unit": "%",
+          "default": 97,
+          "type": "number"
+        },
+        {
+          "key": "inertia_in_kgm2",
+          "label": "Moment of Inertia In",
+          "unit": "kg·m²",
+          "default": 0.015,
+          "type": "number"
+        },
+        {
+          "key": "inertia_out_kgm2",
+          "label": "Moment of Inertia Out",
+          "unit": "kg·m²",
+          "default": 0.02,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.clutch",
+      "category": "Driveline",
+      "name": "Clutch",
+      "icon": "target",
+      "domain": "mechanical",
+      "description": "Friction clutch (smooth Coulomb model). Transmits up to engagement × maximum torque across the slipping interface; under load a small residual slip remains even when fully engaged. Unwired engagement = fully closed.",
+      "ports": [
+        {
+          "id": "flange_a",
+          "name": "Flange A",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_b",
+          "name": "Flange B",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_engage_in",
+          "name": "Engagement",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_torque",
+          "name": "Transmitted Torque",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_slip_speed",
+          "name": "Slip Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "max_torque_Nm",
+          "label": "Maximum Torque",
+          "unit": "N·m",
+          "default": 300,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "mech.transfer_case",
+      "category": "Driveline",
+      "name": "Transfer Case",
+      "icon": "git-branch",
+      "domain": "mechanical",
+      "description": "Center torque split for AWD/multi-axle drivelines. Unlocked: torque splits per the split parameter with free output speeds (planetary-style speed weighting); locked: both outputs forced to the same speed. Each output can feed an axle differential.",
+      "ports": [
+        {
+          "id": "flange_in",
+          "name": "Flange In",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "left"
+        },
+        {
+          "id": "flange_out_a",
+          "name": "Flange Out A (front)",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "flange_out_b",
+          "name": "Flange Out B (rear)",
+          "direction": "bidirectional",
+          "kind": "mechanical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_torque_a",
+          "name": "Torque Out A",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_torque_b",
+          "name": "Torque Out B",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Torque"
+        },
+        {
+          "id": "sig_speed_in",
+          "name": "Input Speed",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Rotational Speed"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "locked",
+          "label": "Locked",
+          "unit": "-",
+          "default": false,
+          "type": "boolean"
+        },
+        {
+          "key": "torque_split_a_pct",
+          "label": "Torque Split to Output A",
+          "unit": "%",
+          "default": 50,
+          "type": "number"
+        },
+        {
+          "key": "ratio",
+          "label": "Ratio",
+          "unit": "-",
+          "default": 1.0,
+          "type": "number"
+        },
+        {
+          "key": "efficiency_pct",
+          "label": "Efficiency",
+          "unit": "%",
+          "default": 98,
+          "type": "number"
+        },
+        {
+          "key": "inertia_kgm2",
+          "label": "Inertia",
+          "unit": "kg·m²",
+          "default": 0.02,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "fuelcell.stack",
+      "category": "Fuel Cell",
+      "name": "Fuel Cell Stack",
+      "icon": "layers",
+      "domain": "electrical",
+      "description": "PEM fuel cell stack: polarization curve (stack voltage vs. current) with a current limit; hydrogen consumption follows electrical energy. Draws from the Hydrogen Tank automatically. Typically feeds the HV bus through a DC-DC converter running at a power setpoint.",
+      "ports": [
+        {
+          "id": "terminal",
+          "name": "Electric Terminal",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right"
+        },
+        {
+          "id": "sig_voltage",
+          "name": "Stack Voltage",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Voltage"
+        },
+        {
+          "id": "sig_current",
+          "name": "Stack Current",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Current"
+        },
+        {
+          "id": "sig_power",
+          "name": "Electrical Power",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Power"
+        },
+        {
+          "id": "sig_h2_rate",
+          "name": "H₂ Consumption",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Mass Flow"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "polarization",
+          "label": "Polarization Curve",
+          "unit": "V",
+          "type": "table1d",
+          "axes": [{ "name": "Current", "unit": "A" }],
+          "default": {
+            "0": 420,
+            "50": 392,
+            "100": 370,
+            "150": 352,
+            "200": 336,
+            "250": 320,
+            "300": 304,
+            "350": 286,
+            "400": 264
+          }
+        },
+        {
+          "key": "max_current_A",
+          "label": "Maximum Current",
+          "unit": "A",
+          "default": 400,
+          "type": "number"
+        },
+        {
+          "key": "h2_per_kwh_g",
+          "label": "Specific H₂ Consumption",
+          "unit": "g/kWh",
+          "default": 55,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "fuel.h2_tank",
+      "category": "Fuel Cell",
+      "name": "Hydrogen Tank",
+      "icon": "cylinder",
+      "domain": "fluid",
+      "description": "Pressurized hydrogen storage. Fuel cells draw from it automatically; when empty the stack shuts down. One tank per model.",
+      "ports": [
+        {
+          "id": "sig_level",
+          "name": "Fill Level",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_mass",
+          "name": "H₂ Mass",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "Mass"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "capacity_kg",
+          "label": "Capacity",
+          "unit": "kg",
+          "default": 5,
+          "type": "number"
+        },
+        {
+          "key": "initial_fill_pct",
+          "label": "Initial Fill",
+          "unit": "%",
+          "default": 95,
+          "type": "number"
+        }
+      ]
+    },
+    {
+      "id": "control.pid",
+      "category": "Driver & Signals",
+      "name": "PID Controller",
+      "icon": "activity",
+      "domain": "signal",
+      "description": "Generic PID feedback controller with output clamping and anti-windup, evaluated once per recording step. Use it for custom control loops without writing a script.",
+      "ports": [
+        {
+          "id": "sig_setpoint_in",
+          "name": "Setpoint",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_feedback_in",
+          "name": "Feedback",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_out",
+          "name": "Output",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        }
+      ],
+      "parameters": [
+        { "key": "kp", "label": "Proportional Gain", "unit": "-", "default": 1.0, "type": "number" },
+        { "key": "ki", "label": "Integral Gain", "unit": "1/s", "default": 0, "type": "number" },
+        { "key": "kd", "label": "Derivative Gain", "unit": "s", "default": 0, "type": "number" },
+        { "key": "out_min", "label": "Output Minimum", "unit": "-", "default": -1, "type": "number" },
+        { "key": "out_max", "label": "Output Maximum", "unit": "-", "default": 1, "type": "number" }
+      ]
+    },
+    {
+      "id": "signal.lookup",
+      "category": "Driver & Signals",
+      "name": "Lookup Table",
+      "icon": "table",
+      "domain": "signal",
+      "description": "Applies a 1D or 2D lookup table to its input signal(s) — no-code signal shaping (e.g. pedal maps, recuperation weighting).",
+      "ports": [
+        {
+          "id": "sig_x_in",
+          "name": "Input X",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_y_in",
+          "name": "Input Y (2D mode)",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        },
+        {
+          "id": "sig_out",
+          "name": "Output",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "mode",
+          "label": "Mode",
+          "unit": "-",
+          "default": "1D",
+          "type": "enum",
+          "options": ["1D", "2D"]
+        },
+        {
+          "key": "table_1d",
+          "label": "1D Table",
+          "unit": "-",
+          "type": "table1d",
+          "axes": [{ "name": "Input", "unit": "-" }],
+          "default": { "0": 0, "1": 1 }
+        },
+        {
+          "key": "table_2d",
+          "label": "2D Table",
+          "unit": "-",
+          "type": "table2d",
+          "axes": [
+            { "name": "Input X", "unit": "-" },
+            { "name": "Input Y", "unit": "-" }
+          ],
+          "default": { "0": { "0": 0, "1": 0 }, "1": { "0": 0, "1": 1 } }
+        }
+      ]
+    },
+    {
+      "id": "signal.road_profile",
+      "category": "Driver & Signals",
+      "name": "Road Profile",
+      "icon": "mountain",
+      "domain": "signal",
+      "description": "Road grade profile over distance (or time), piecewise-linear 'x:grade%' pairs. Wire the grade output to the Vehicle's Road Grade input; in distance mode it follows the Vehicle's distance automatically when unwired.",
+      "ports": [
+        {
+          "id": "sig_distance_in",
+          "name": "Distance",
+          "direction": "input",
+          "kind": "signal",
+          "unitGroup": "Distance"
+        },
+        {
+          "id": "sig_grade",
+          "name": "Road Grade",
+          "direction": "output",
+          "kind": "signal",
+          "unitGroup": "No Unit"
+        }
+      ],
+      "parameters": [
+        {
+          "key": "profile",
+          "label": "Profile (x:grade%; …)",
+          "unit": "-",
+          "default": "0:0; 500:3; 1500:3; 2000:0; 3000:-3; 4000:0",
+          "type": "string"
+        },
+        {
+          "key": "mode",
+          "label": "Profile Axis",
+          "unit": "-",
+          "default": "distance",
+          "type": "enum",
+          "options": ["distance", "time"]
+        },
+        {
+          "key": "repeat",
+          "label": "Repeat Profile",
+          "unit": "-",
+          "default": false,
+          "type": "boolean"
+        }
+      ]
+    }
+  ]
+}

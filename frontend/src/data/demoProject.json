@@ -1,0 +1,496 @@
+{
+  "id": "bev-car",
+  "name": "Battery Electric Car",
+  "systems": [
+    {
+      "id": "sys-root",
+      "name": "Battery Electric Car",
+      "parentId": null,
+      "elements": [
+        {
+          "id": "el-wheel-rl",
+          "componentDefId": "propulsion.wheel",
+          "label": "Wheel RL",
+          "position": {
+            "x": 40,
+            "y": 30
+          },
+          "parameterOverrides": {
+            "vehicle_load_share_pct": 22.5
+          }
+        },
+        {
+          "id": "el-brake-rl",
+          "componentDefId": "mech.brake",
+          "label": "Brake RL",
+          "position": {
+            "x": 40,
+            "y": 150
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-vehicle",
+          "componentDefId": "vehicle.body",
+          "label": "Vehicle",
+          "position": {
+            "x": 210,
+            "y": 40
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-driver",
+          "componentDefId": "driver.driver",
+          "label": "Driver",
+          "position": {
+            "x": 210,
+            "y": 150
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-veh-monitor",
+          "componentDefId": "signal.monitor",
+          "label": "Vehicle Monitor",
+          "position": {
+            "x": 330,
+            "y": 40
+          },
+          "parameterOverrides": {},
+          "dynamicPorts": [
+            {
+              "id": "speed",
+              "name": "speed",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            },
+            {
+              "id": "motor_torque",
+              "name": "motor_torque",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            },
+            {
+              "id": "traction_cmd",
+              "name": "traction_cmd",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            }
+          ]
+        },
+        {
+          "id": "el-brake-fl",
+          "componentDefId": "mech.brake",
+          "label": "Brake FL",
+          "position": {
+            "x": 430,
+            "y": 130
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-node-fl",
+          "componentDefId": "mech.node",
+          "label": "Node FL",
+          "position": {
+            "x": 545,
+            "y": 130
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-wheel-fl",
+          "componentDefId": "propulsion.wheel",
+          "label": "Wheel FL",
+          "position": {
+            "x": 545,
+            "y": 20
+          },
+          "parameterOverrides": {
+            "vehicle_load_share_pct": 27.5
+          }
+        },
+        {
+          "id": "el-hvbus",
+          "componentDefId": "electric.node",
+          "label": "HV Bus",
+          "position": {
+            "x": 200,
+            "y": 250
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-battery",
+          "componentDefId": "battery.generic",
+          "label": "HV Battery Pack",
+          "position": {
+            "x": 40,
+            "y": 350
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-consumer",
+          "componentDefId": "electric.constant_drive",
+          "label": "Power Consumer",
+          "position": {
+            "x": 180,
+            "y": 350
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-motor",
+          "componentDefId": "motor.emotor",
+          "label": "E-Motor",
+          "position": {
+            "x": 320,
+            "y": 350
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-final-drive",
+          "componentDefId": "mech.final_drive",
+          "label": "Final Drive",
+          "position": {
+            "x": 450,
+            "y": 350
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-diff",
+          "componentDefId": "mech.differential",
+          "label": "Differential",
+          "position": {
+            "x": 570,
+            "y": 350
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-ground",
+          "componentDefId": "boundary.ground",
+          "label": "Ground",
+          "position": {
+            "x": 180,
+            "y": 470
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-brake-rr",
+          "componentDefId": "mech.brake",
+          "label": "Brake RR",
+          "position": {
+            "x": 40,
+            "y": 560
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-wheel-rr",
+          "componentDefId": "propulsion.wheel",
+          "label": "Wheel RR",
+          "position": {
+            "x": 40,
+            "y": 680
+          },
+          "parameterOverrides": {
+            "vehicle_load_share_pct": 22.5
+          }
+        },
+        {
+          "id": "el-brake-fr",
+          "componentDefId": "mech.brake",
+          "label": "Brake FR",
+          "position": {
+            "x": 430,
+            "y": 560
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-node-fr",
+          "componentDefId": "mech.node",
+          "label": "Node FR",
+          "position": {
+            "x": 545,
+            "y": 560
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-wheel-fr",
+          "componentDefId": "propulsion.wheel",
+          "label": "Wheel FR",
+          "position": {
+            "x": 545,
+            "y": 680
+          },
+          "parameterOverrides": {
+            "vehicle_load_share_pct": 27.5
+          }
+        },
+        {
+          "id": "el-task",
+          "componentDefId": "signal.driving_task",
+          "label": "Vehicle Task",
+          "position": {
+            "x": 740,
+            "y": 40
+          },
+          "parameterOverrides": {}
+        },
+        {
+          "id": "el-bms-monitor",
+          "componentDefId": "signal.monitor",
+          "label": "BMS Monitor",
+          "position": {
+            "x": 740,
+            "y": 350
+          },
+          "parameterOverrides": {},
+          "dynamicPorts": [
+            {
+              "id": "soc",
+              "name": "soc",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            },
+            {
+              "id": "voltage",
+              "name": "voltage",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            },
+            {
+              "id": "current",
+              "name": "current",
+              "direction": "input",
+              "kind": "signal",
+              "unitGroup": "No Unit"
+            }
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "id": "c-1",
+          "sourceElementId": "el-battery",
+          "sourcePortId": "vs1",
+          "targetElementId": "el-hvbus",
+          "targetPortId": "t1"
+        },
+        {
+          "id": "c-2",
+          "sourceElementId": "el-battery",
+          "sourcePortId": "vs2",
+          "targetElementId": "el-ground",
+          "targetPortId": "t1"
+        },
+        {
+          "id": "c-3",
+          "sourceElementId": "el-hvbus",
+          "sourcePortId": "t2",
+          "targetElementId": "el-consumer",
+          "targetPortId": "terminal"
+        },
+        {
+          "id": "c-4",
+          "sourceElementId": "el-hvbus",
+          "sourcePortId": "t3",
+          "targetElementId": "el-motor",
+          "targetPortId": "terminal"
+        },
+        {
+          "id": "c-5",
+          "sourceElementId": "el-motor",
+          "sourcePortId": "shaft",
+          "targetElementId": "el-final-drive",
+          "targetPortId": "flange_in"
+        },
+        {
+          "id": "c-6",
+          "sourceElementId": "el-final-drive",
+          "sourcePortId": "flange_out",
+          "targetElementId": "el-diff",
+          "targetPortId": "flange_in"
+        },
+        {
+          "id": "c-7",
+          "sourceElementId": "el-diff",
+          "sourcePortId": "flange_out_a",
+          "targetElementId": "el-node-fl",
+          "targetPortId": "f1"
+        },
+        {
+          "id": "c-8",
+          "sourceElementId": "el-diff",
+          "sourcePortId": "flange_out_b",
+          "targetElementId": "el-node-fr",
+          "targetPortId": "f1"
+        },
+        {
+          "id": "c-9",
+          "sourceElementId": "el-node-fl",
+          "sourcePortId": "f2",
+          "targetElementId": "el-brake-fl",
+          "targetPortId": "flange"
+        },
+        {
+          "id": "c-10",
+          "sourceElementId": "el-node-fl",
+          "sourcePortId": "f3",
+          "targetElementId": "el-wheel-fl",
+          "targetPortId": "shaft"
+        },
+        {
+          "id": "c-11",
+          "sourceElementId": "el-node-fr",
+          "sourcePortId": "f2",
+          "targetElementId": "el-brake-fr",
+          "targetPortId": "flange"
+        },
+        {
+          "id": "c-12",
+          "sourceElementId": "el-node-fr",
+          "sourcePortId": "f3",
+          "targetElementId": "el-wheel-fr",
+          "targetPortId": "shaft"
+        },
+        {
+          "id": "c-13",
+          "sourceElementId": "el-brake-rl",
+          "sourcePortId": "flange",
+          "targetElementId": "el-wheel-rl",
+          "targetPortId": "shaft"
+        },
+        {
+          "id": "c-14",
+          "sourceElementId": "el-brake-rr",
+          "sourcePortId": "flange",
+          "targetElementId": "el-wheel-rr",
+          "targetPortId": "shaft"
+        }
+      ]
+    }
+  ],
+  "dataBusConnections": [
+    {
+      "id": "db-1",
+      "element1Id": "el-task",
+      "port1Id": "sig_demand",
+      "element2Id": "el-driver",
+      "port2Id": "sig_target_in"
+    },
+    {
+      "id": "db-13",
+      "element1Id": "el-vehicle",
+      "port1Id": "sig_speed",
+      "element2Id": "el-driver",
+      "port2Id": "sig_speed_in"
+    },
+    {
+      "id": "db-2",
+      "element1Id": "el-driver",
+      "port1Id": "sig_traction_cmd",
+      "element2Id": "el-motor",
+      "port2Id": "sig_demand_in"
+    },
+    {
+      "id": "db-3",
+      "element1Id": "el-driver",
+      "port1Id": "sig_brake_cmd",
+      "element2Id": "el-brake-fl",
+      "port2Id": "sig_demand_in"
+    },
+    {
+      "id": "db-4",
+      "element1Id": "el-driver",
+      "port1Id": "sig_brake_cmd",
+      "element2Id": "el-brake-fr",
+      "port2Id": "sig_demand_in"
+    },
+    {
+      "id": "db-5",
+      "element1Id": "el-driver",
+      "port1Id": "sig_brake_cmd",
+      "element2Id": "el-brake-rl",
+      "port2Id": "sig_demand_in"
+    },
+    {
+      "id": "db-6",
+      "element1Id": "el-driver",
+      "port1Id": "sig_brake_cmd",
+      "element2Id": "el-brake-rr",
+      "port2Id": "sig_demand_in"
+    },
+    {
+      "id": "db-7",
+      "element1Id": "el-vehicle",
+      "port1Id": "sig_speed",
+      "element2Id": "el-veh-monitor",
+      "port2Id": "speed"
+    },
+    {
+      "id": "db-8",
+      "element1Id": "el-motor",
+      "port1Id": "sig_torque",
+      "element2Id": "el-veh-monitor",
+      "port2Id": "motor_torque"
+    },
+    {
+      "id": "db-9",
+      "element1Id": "el-driver",
+      "port1Id": "sig_traction_cmd",
+      "element2Id": "el-veh-monitor",
+      "port2Id": "traction_cmd"
+    },
+    {
+      "id": "db-10",
+      "element1Id": "el-battery",
+      "port1Id": "sig_soc",
+      "element2Id": "el-bms-monitor",
+      "port2Id": "soc"
+    },
+    {
+      "id": "db-11",
+      "element1Id": "el-battery",
+      "port1Id": "sig_voltage",
+      "element2Id": "el-bms-monitor",
+      "port2Id": "voltage"
+    },
+    {
+      "id": "db-12",
+      "element1Id": "el-battery",
+      "port1Id": "sig_current",
+      "element2Id": "el-bms-monitor",
+      "port2Id": "current"
+    }
+  ],
+  "cases": [
+    {
+      "id": "case-city",
+      "name": "City Cycle",
+      "duration": 600.0,
+      "timeStep": 1.0,
+      "realtimeFactor": 0.0
+    },
+    {
+      "id": "case-city-live",
+      "name": "City Cycle (live, 10×)",
+      "duration": 600.0,
+      "timeStep": 1.0,
+      "realtimeFactor": 10.0
+    }
+  ]
+}
