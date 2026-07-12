@@ -9,6 +9,7 @@ import {
 import { AlertTriangle } from "lucide-react";
 import type { ComponentDef, ElementInstance, PortDef, PortSide } from "../../types";
 import { useProjectStore } from "../../store/projectStore";
+import { useUIStore } from "../../store/uiStore";
 import { componentIcon } from "../../icons";
 
 export type ElementNodeData = {
@@ -19,6 +20,40 @@ export type ElementNodeData = {
 export type ElementFlowNode = Node<ElementNodeData, "element">;
 
 export const DEFAULT_NODE_WIDTH = 92;
+
+// Per-domain accent — mid-tone saturated colors that read on both the light
+// and dark node backgrounds (mirrors the edge KIND_COLOR palette).
+const DOMAIN_COLOR: Record<string, string> = {
+  electrical: "#e08600",
+  mechanical: "#64748b",
+  signal: "#0891b2",
+  thermal: "#dc2626",
+  fluid: "#2563eb",
+};
+
+// The one "headline" signal shown as a live chip on a node during/after a run.
+// Keyed by componentDefId → {port, unit, digits}. Elements not listed show none.
+const LIVE_BADGE: Record<string, { port: string; unit: string; digits: number }> = {
+  "vehicle.body": { port: "sig_speed", unit: "km/h", digits: 1 },
+  "battery.generic": { port: "sig_soc", unit: "%", digits: 1 },
+  "motor.emotor": { port: "sig_torque", unit: "N·m", digits: 0 },
+  "engine.combustion": { port: "sig_speed", unit: "1/min", digits: 0 },
+  "fuelcell.stack": { port: "sig_power", unit: "kW", digits: 1 },
+  "electric.voltage_source": { port: "sig_power", unit: "kW", digits: 1 },
+  "electric.constant_drive": { port: "sig_power", unit: "kW", digits: 1 },
+  "controller.dcdc": { port: "sig_power_out", unit: "kW", digits: 1 },
+  "mech.final_drive": { port: "sig_speed_out", unit: "1/min", digits: 0 },
+  "propulsion.wheel": { port: "sig_speed", unit: "1/min", digits: 0 },
+  "fuel.tank": { port: "sig_level", unit: "%", digits: 0 },
+  "fuel.h2_tank": { port: "sig_level", unit: "%", digits: 0 },
+  "signal.driving_task": { port: "sig_demand", unit: "km/h", digits: 0 },
+  "driver.driver": { port: "sig_accel_pedal", unit: "", digits: 2 },
+};
+
+function formatLive(v: number, digits: number): string {
+  if (!Number.isFinite(v)) return "—";
+  return Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : v.toFixed(digits);
+}
 
 const POSITION_OF: Record<PortSide, Position> = {
   left: Position.Left,
@@ -159,6 +194,15 @@ export const ElementNode = memo(({ data, selected }: NodeProps<ElementFlowNode>)
   const dataChecks = useProjectStore((s) => s.dataChecks);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
+  const domainColor = DOMAIN_COLOR[def.domain] ?? "var(--ss-node-border)";
+
+  // live headline value: subscribe narrowly so only this node re-renders when
+  // its own signal ticks. Undefined until the run publishes it; persists after.
+  const badge = LIVE_BADGE[def.id];
+  const badgeKey = badge ? `${element.id}:${badge.port}` : null;
+  const liveVal = useProjectStore((s) => (badgeKey ? s.liveValues[badgeKey] : undefined));
+  const showLiveValues = useUIStore((s) => s.showLiveValues);
+
   // surface data-check errors/warnings for this element right on the node
   const issue = useMemo(() => {
     const forEl = dataChecks?.filter((c) => c.elementId === element.id) ?? [];
@@ -207,12 +251,26 @@ export const ElementNode = memo(({ data, selected }: NodeProps<ElementFlowNode>)
       />
       <div
         ref={boxRef}
-        className={`group relative flex items-center justify-center rounded-md border bg-[color:var(--ss-panel)] shadow-sm transition-shadow
-          ${isSub ? "border-dashed border-[color:var(--ss-accent)] bg-[color:var(--ss-accent-soft)]" : "border-[color:var(--ss-node-border)]"}
+        className={`group relative flex items-center justify-center rounded-md border-[1.5px] bg-[color:var(--ss-panel)] shadow-sm transition-shadow
+          ${isSub ? "border-dashed border-[color:var(--ss-accent)] bg-[color:var(--ss-accent-soft)]" : ""}
           ${selected ? "outline outline-2 outline-[color:var(--ss-accent)] shadow-md" : issue?.level === "error" ? "outline outline-2 outline-red-500" : issue?.level === "warning" ? "outline outline-1 outline-amber-500" : ""}`}
-        style={{ width, height }}
+        style={{ width, height, ...(isSub ? {} : { borderColor: domainColor }) }}
         title={isSub ? "Double-click to open sub-system" : `${def.name} — double-click for parameters`}
       >
+        {showLiveValues && badge && liveVal !== undefined && (
+          <div
+            className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 whitespace-nowrap rounded px-1 py-[1px] text-[10px] font-semibold leading-none tabular-nums"
+            style={{
+              color: "var(--ss-accent)",
+              background: "color-mix(in srgb, var(--ss-accent) 14%, var(--ss-panel))",
+              border: "1px solid color-mix(in srgb, var(--ss-accent) 40%, transparent)",
+            }}
+            title={badge.port}
+          >
+            {formatLive(liveVal, badge.digits)}
+            {badge.unit ? ` ${badge.unit}` : ""}
+          </div>
+        )}
         {issue && (
           <span
             className={`absolute -right-1.5 -top-1.5 z-20 flex h-3.5 w-3.5 items-center justify-center rounded-full text-white shadow ${
@@ -225,8 +283,9 @@ export const ElementNode = memo(({ data, selected }: NodeProps<ElementFlowNode>)
         )}
         <Icon
           size={isSub ? 26 : 30}
-          strokeWidth={1.5}
-          className={isSub ? "text-[color:var(--ss-accent)]" : "text-[color:var(--ss-node-icon)]"}
+          strokeWidth={1.6}
+          className={isSub ? "text-[color:var(--ss-accent)]" : undefined}
+          style={isSub ? undefined : { color: domainColor }}
         />
         {isSub && (
           <span className="absolute bottom-0.5 right-1 text-[8px] font-semibold uppercase tracking-wide text-[color:var(--ss-accent)]">
@@ -250,11 +309,13 @@ export const ElementNode = memo(({ data, selected }: NodeProps<ElementFlowNode>)
             />
           )),
         )}
-        <div
-          className={`pointer-events-none absolute left-1/2 top-full mt-1 w-[120px] -translate-x-1/2 text-center text-[10px] leading-tight
-            ${selected ? "font-semibold text-[color:var(--ss-accent)]" : "text-[color:var(--ss-node-icon)]"}`}
-        >
-          {element.label}
+        <div className="pointer-events-none absolute left-1/2 top-full mt-1 w-[128px] -translate-x-1/2 text-center text-[11px] leading-tight">
+          <span
+            className={`rounded px-1 ${selected ? "font-semibold text-[color:var(--ss-accent)]" : "text-[color:var(--ss-node-icon)]"}`}
+            style={{ background: "color-mix(in srgb, var(--ss-panel) 78%, transparent)" }}
+          >
+            {element.label}
+          </span>
         </div>
       </div>
     </>

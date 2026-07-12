@@ -9,9 +9,9 @@ export type RibbonTab =
   | "optimization"
   | "parameters";
 
-// Signal/data-bus wiring is intentionally not drawn on the canvas — it lives
-// in the Data Bus Connections panel.
-export type EdgeKindFilter = "electrical" | "mechanical";
+// Canvas connection layers. Electrical/mechanical are real React Flow edges;
+// "signal" toggles a dashed data-bus overlay (drawn from dataBusConnections).
+export type EdgeKindFilter = "electrical" | "mechanical" | "signal";
 
 export type Theme = "light" | "dark";
 
@@ -44,6 +44,10 @@ interface UIState {
   visibleKinds: Record<EdgeKindFilter, boolean>;
   toggleKind: (kind: EdgeKindFilter) => void;
 
+  /** Live-value overlay chips on canvas nodes (fed from the live run stream). */
+  showLiveValues: boolean;
+  toggleLiveValues: () => void;
+
   /** Element whose parameters are open in the modal dialog (double-click). */
   paramDialogId: string | null;
   openParamDialog: (elementId: string) => void;
@@ -67,11 +71,14 @@ export const useUIStore = create<UIState>((set, get) => ({
     panel?.api.setActive();
   },
 
-  visibleKinds: { electrical: true, mechanical: true },
+  visibleKinds: { electrical: true, mechanical: true, signal: false },
   toggleKind: (kind) =>
     set((s) => ({
       visibleKinds: { ...s.visibleKinds, [kind]: !s.visibleKinds[kind] },
     })),
+
+  showLiveValues: true,
+  toggleLiveValues: () => set((s) => ({ showLiveValues: !s.showLiveValues })),
 
   paramDialogId: null,
   openParamDialog: (elementId) => set({ paramDialogId: elementId }),

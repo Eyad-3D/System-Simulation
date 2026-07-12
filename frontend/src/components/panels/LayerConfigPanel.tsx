@@ -1,3 +1,4 @@
+import { Activity } from "lucide-react";
 import { useUIStore, type EdgeKindFilter } from "../../store/uiStore";
 
 const LAYERS: { id: EdgeKindFilter; label: string; color: string; note: string }[] = [
@@ -13,18 +14,24 @@ const LAYERS: { id: EdgeKindFilter; label: string; color: string; note: string }
     color: "#3f4650",
     note: "Shafts, gearbox, differential and wheel couplings",
   },
+  {
+    id: "signal",
+    label: "Signal / data-bus links",
+    color: "#0e7490",
+    note: "Control & sensor wiring (dashed) — reveals your control loops on the canvas",
+  },
 ];
 
 export function LayerConfigPanel() {
   const visibleKinds = useUIStore((s) => s.visibleKinds);
   const toggleKind = useUIStore((s) => s.toggleKind);
+  const showLiveValues = useUIStore((s) => s.showLiveValues);
+  const toggleLiveValues = useUIStore((s) => s.toggleLiveValues);
 
   return (
     <div className="flex h-full flex-col">
       <div className="ss-panel-toolbar text-[11px] text-[color:var(--ss-text-dim)]">
-        Configure which connection layers are drawn on the Topology canvas.
-        Signal / data-bus wiring is managed in the Data Bus Connections panel
-        and never drawn on the canvas.
+        Choose which connection layers and overlays are drawn on the Topology canvas.
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <table className="w-full border-collapse">
@@ -47,7 +54,15 @@ export function LayerConfigPanel() {
                 </td>
                 <td className="ss-td">
                   <span className="flex items-center gap-2">
-                    <span className="inline-block h-[3px] w-6" style={{ background: l.color }} />
+                    <span
+                      className="inline-block h-[3px] w-6"
+                      style={{
+                        background: l.color,
+                        ...(l.id === "signal"
+                          ? { backgroundImage: "none", borderTop: `2px dashed ${l.color}`, height: 0 }
+                          : {}),
+                      }}
+                    />
                     {l.label}
                   </span>
                 </td>
@@ -56,6 +71,25 @@ export function LayerConfigPanel() {
             ))}
           </tbody>
         </table>
+
+        <div className="mt-3 mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--ss-text-dim)]">
+          <Activity size={12} /> Overlays
+        </div>
+        <label className="flex cursor-pointer items-start gap-2 rounded px-1 py-1 hover:bg-[color:var(--ss-hover)]">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={showLiveValues}
+            onChange={toggleLiveValues}
+          />
+          <span className="text-[12px]">
+            Live values on nodes
+            <span className="block text-[11px] text-[color:var(--ss-text-dim)]">
+              Show each element's headline signal (speed, SOC, torque…) as a chip during and
+              after a run.
+            </span>
+          </span>
+        </label>
       </div>
     </div>
   );

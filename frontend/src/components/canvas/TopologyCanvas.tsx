@@ -190,6 +190,45 @@ function TopologyCanvasInner() {
     return out;
   }, [system, project, libraryById, visibleKinds, selectedEdges]);
 
+  // Signal / data-bus links as a dashed overlay (render-only). These are stored
+  // globally in project.dataBusConnections, not as canvas edges; we draw a
+  // border-to-border dashed line between the two node boxes so control loops
+  // are visible. Toggled via the "signal" layer in Layer Configurations.
+  const signalEdges = useMemo(() => {
+    if (!system || !project || !visibleKinds.signal) return [];
+    // NB: `Map` is shadowed by the lucide-react Map icon in this file — use a record.
+    const inSys: Record<string, (typeof system.elements)[number]> = {};
+    for (const e of system.elements) inSys[e.id] = e;
+    const box = (el: (typeof system.elements)[number]) => {
+      const w = el.size?.width ?? DEFAULT_W;
+      const h = el.size?.height ?? 64;
+      return { cx: el.position.x + w / 2, cy: el.position.y + h / 2, hw: w / 2, hh: h / 2 };
+    };
+    const out: { id: string; x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (const d of project.dataBusConnections) {
+      const a = inSys[d.element1Id];
+      const b = inSys[d.element2Id];
+      if (!a || !b) continue;
+      const ba = box(a);
+      const bb = box(b);
+      const dx = bb.cx - ba.cx;
+      const dy = bb.cy - ba.cy;
+      if (dx === 0 && dy === 0) continue;
+      const adx = Math.abs(dx) || 1e-6;
+      const ady = Math.abs(dy) || 1e-6;
+      const t0 = Math.min(ba.hw / adx, ba.hh / ady); // exit source box
+      const t1 = Math.min(bb.hw / adx, bb.hh / ady); // enter target box
+      out.push({
+        id: d.id,
+        x1: ba.cx + dx * t0,
+        y1: ba.cy + dy * t0,
+        x2: bb.cx - dx * t1,
+        y2: bb.cy - dy * t1,
+      });
+    }
+    return out;
+  }, [system, project, visibleKinds]);
+
   const onNodesChange = useCallback(
     (changes: NodeChange<ElementFlowNode>[]) => {
       const sel = new Set(selectedNodes);
@@ -550,6 +589,30 @@ function TopologyCanvasInner() {
               gap={GRID}
               color={theme === "dark" ? "#262b33" : "#eceff3"}
             />
+          )}
+          {signalEdges.length > 0 && (
+            <ViewportPortal>
+              <svg
+                className="pointer-events-none absolute left-0 top-0 overflow-visible"
+                style={{ width: 1, height: 1 }}
+              >
+                {signalEdges.map((e) => (
+                  <line
+                    key={e.id}
+                    x1={e.x1}
+                    y1={e.y1}
+                    x2={e.x2}
+                    y2={e.y2}
+                    stroke={KIND_COLOR.signal}
+                    strokeWidth={1.6}
+                    strokeDasharray="5 4"
+                    strokeLinecap="round"
+                    vectorEffect="non-scaling-stroke"
+                    opacity={0.85}
+                  />
+                ))}
+              </svg>
+            </ViewportPortal>
           )}
           {guides && (
             <ViewportPortal>
