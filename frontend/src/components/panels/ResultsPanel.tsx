@@ -12,13 +12,15 @@ import {
 import {
   Download,
   Image as ImageIcon,
+  Layers,
   LineChart as LineChartIcon,
   Play,
   Search,
   Table2,
+  TrendingUp,
   X,
 } from "lucide-react";
-import { useActiveRun, useCompareRun, useProjectStore } from "../../store/projectStore";
+import { useActiveRun, useOverlayRuns, useProjectStore } from "../../store/projectStore";
 import { useUIStore } from "../../store/uiStore";
 import type { Channel, SimResult, SimRun } from "../../types";
 
@@ -34,6 +36,8 @@ const PALETTE = [
   "#b45309",
   "#1d4ed8",
 ];
+// dash patterns to distinguish channels when several runs are overlaid at once
+const DASHES = ["", "5 3", "2 2", "7 3 2 3", "9 4"];
 
 const MAX_PLOT_POINTS = 2000;
 
@@ -41,9 +45,23 @@ function channelKey(c: Channel): string {
   return `${c.elementId}:${c.portId}`;
 }
 
+function runTime(r: SimRun): string {
+  return new Date(r.startedAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function runLabel(r: SimRun): string {
-  const time = new Date(r.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  return `${r.caseName} · ${time} · ${r.status}`;
+  return `${r.caseName} · ${runTime(r)} · ${r.status}`;
+}
+
+/** Compact run label for legends/overlay chips — swept value if present. */
+function runShort(r: SimRun): string {
+  if (r.sweepValue !== undefined)
+    return `${r.sweepValue}${r.sweepUnit ? ` ${r.sweepUnit}` : ""}`;
+  return runTime(r);
 }
 
 /** Stride-decimate a series so charts/tables stay responsive (keeps the endpoints). */
@@ -131,23 +149,24 @@ function exportPng(host: HTMLElement | null, bg: string, name: string) {
 export function ResultsPanel() {
   const runs = useProjectStore((s) => s.runs);
   const activeRun = useActiveRun();
-  const compareRun = useCompareRun();
+  const overlayRuns = useOverlayRuns();
+  const overlayRunIds = useProjectStore((s) => s.overlayRunIds);
   const setActiveRun = useProjectStore((s) => s.setActiveRun);
-  const setCompareRun = useProjectStore((s) => s.setCompareRun);
+  const toggleOverlayRun = useProjectStore((s) => s.toggleOverlayRun);
+  const setOverlayRuns = useProjectStore((s) => s.setOverlayRuns);
+  const clearOverlays = useProjectStore((s) => s.clearOverlays);
   const removeRun = useProjectStore((s) => s.removeRun);
   const running = useProjectStore((s) => s.running);
   const run = useProjectStore((s) => s.run);
   const theme = useUIStore((s) => s.theme);
 
   const result = activeRun?.result;
-  const compareResult = compareRun?.result;
   const selKey = activeRun?.caseId ?? "";
 
-  // channel selection is keyed by case, so comparing two runs of the same
-  // case keeps the same channels ticked
   const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [view, setView] = useState<"chart" | "table">("chart");
+  const [view, setView] = useState<"chart" | "table" | "sweep">("chart");
   const [search, setSearch] = useState("");
+  const [sweepMetric, setSweepMetric] = useState("");
   const { ref: chartHost, hasSize } = useHasSize<HTMLDivElement>();
 
   // sensible default channel selection the first time a case's results are shown
@@ -167,6 +186,15 @@ export function ResultsPanel() {
     () => new Set(selKey ? (selected[selKey] ?? []) : []),
     [selected, selKey],
   );
+  const selectedList = useMemo(() => [...selectedKeys], [selectedKeys]);
+
+  // sweep family of the active run (sorted by swept value)
+  const family = useMemo(() => {
+    if (!activeRun?.sweepId) return [];
+    return runs
+      .filter((r) => r.sweepId === activeRun.sweepId)
+      .sort((a, b) => (a.sweepValue ?? 0) - (b.sweepValue ?? 0));
+  }, [runs, activeRun]);
 
   const byElement = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -180,41 +208,75 @@ export function ResultsPanel() {
     return [...groups.entries()];
   }, [result, search]);
 
+  // runs plotted together: the active run first, then each overlay
+  const plotRuns = useMemo(
+    () => [activeRun, ...overlayRuns].filter((r): r is SimRun => Boolean(r)),
+    [activeRun, overlayRuns],
+  );
+  const multiRun = plotRuns.length > 1;
+  const runColor = (i: number) => PALETTE[i % PALETTE.length];
+  const channelColor = (key: string) => PALETTE[Math.max(0, selectedList.indexOf(key)) % PALETTE.length];
+  const overlayColorOf = (id: string) => {
+    const idx = overlayRunIds.indexOf(id);
+    return idx >= 0 ? runColor(idx + 1) : "#c0c6d0";
+  };
+
+  // one plotted series per (run × selected channel)
+  const seriesDefs = useMemo(() => {
+    const defs: {
+      dataKey: string;
+      unit: string;
+      color: string;
+      dash?: string;
+      legend: string;
+      channel: Channel;
+    }[] = [];
+    plotRuns.forEach((r, ri) => {
+      for (const c of r.result.channels) {
+        const key = channelKey(c);
+        if (!selectedKeys.has(key)) continue;
+        const ci = selectedList.indexOf(key);
+        const chLabel = c.label.split(" · ")[1] ?? c.label;
+        defs.push({
+          dataKey: `${r.id}::${key}`,
+          unit: c.unit,
+          color: multiRun ? runColor(ri) : channelColor(key),
+          dash: multiRun && selectedList.length > 1 ? DASHES[ci % DASHES.length] : undefined,
+          legend: multiRun ? `${runShort(r)} · ${chLabel}` : chLabel,
+          channel: c,
+        });
+      }
+    });
+    return defs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plotRuns, selectedKeys, selectedList, multiRun]);
+
+  const defByKey = useMemo(
+    () => new Map(seriesDefs.map((d) => [d.dataKey, d])),
+    [seriesDefs],
+  );
+  const units = useMemo(() => [...new Set(seriesDefs.map((d) => d.unit))], [seriesDefs]);
+
+  const chartData = useMemo(() => {
+    const map = new Map<number, Record<string, number>>();
+    for (const d of seriesDefs) {
+      for (const pt of decimate(d.channel.timeSeries)) {
+        let row = map.get(pt.t);
+        if (!row) {
+          row = { t: pt.t };
+          map.set(pt.t, row);
+        }
+        row[d.dataKey] = pt.value;
+      }
+    }
+    return [...map.values()].sort((a, b) => a.t - b.t);
+  }, [seriesDefs]);
+
+  // table shows only the active run (aligned time grid)
   const activeChannels = useMemo(
     () => result?.channels.filter((c) => selectedKeys.has(channelKey(c))) ?? [],
     [result, selectedKeys],
   );
-  const compareChannels = useMemo(
-    () => compareResult?.channels.filter((c) => selectedKeys.has(channelKey(c))) ?? [],
-    [compareResult, selectedKeys],
-  );
-
-  // distinct units → one Y axis each (dimensionally-correct multi-axis plot)
-  const units = useMemo(
-    () => [...new Set(activeChannels.map((c) => c.unit))],
-    [activeChannels],
-  );
-  const colorOf = (key: string) => {
-    const idx = [...selectedKeys].indexOf(key);
-    return PALETTE[(idx < 0 ? 0 : idx) % PALETTE.length];
-  };
-
-  const chartData = useMemo(() => {
-    const map = new Map<number, Record<string, number>>();
-    const put = (t: number, k: string, v: number) => {
-      let r = map.get(t);
-      if (!r) {
-        r = { t };
-        map.set(t, r);
-      }
-      r[k] = v;
-    };
-    for (const c of activeChannels) for (const pt of decimate(c.timeSeries)) put(pt.t, channelKey(c), pt.value);
-    for (const c of compareChannels) for (const pt of decimate(c.timeSeries)) put(pt.t, `cmp:${channelKey(c)}`, pt.value);
-    return [...map.values()].sort((a, b) => a.t - b.t);
-  }, [activeChannels, compareChannels]);
-
-  // table shows only the active run (aligned time grid)
   const tableData = useMemo(() => {
     if (activeChannels.length === 0) return [];
     const cols = activeChannels.map((c) => decimate(c.timeSeries));
@@ -227,6 +289,34 @@ export function ResultsPanel() {
       return row;
     });
   }, [activeChannels]);
+
+  // sweep-summary data: chosen metric vs swept value across the family
+  const sweepMetrics = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of family) for (const s of r.result.summary) set.add(s.label);
+    return [...set];
+  }, [family]);
+  useEffect(() => {
+    if (sweepMetrics.length === 0) return;
+    if (!sweepMetrics.includes(sweepMetric)) {
+      const preferred =
+        sweepMetrics.find((m) => /consumption|final soc|fuel/i.test(m)) ?? sweepMetrics[0];
+      setSweepMetric(preferred);
+    }
+  }, [sweepMetrics, sweepMetric]);
+  const sweepUnit = family[0]?.sweepUnit ?? "";
+  const sweepParam = family[0]?.sweepParam ?? "value";
+  const sweepData = useMemo(
+    () =>
+      family
+        .map((r) => {
+          const sv = r.result.summary.find((s) => s.label === sweepMetric);
+          return { x: r.sweepValue ?? 0, y: sv ? sv.value : null, unit: sv?.unit ?? "" };
+        })
+        .filter((d) => d.y !== null),
+    [family, sweepMetric],
+  );
+  const metricUnit = sweepData[0]?.unit ?? "";
 
   const toggle = (key: string) => {
     if (!selKey) return;
@@ -256,22 +346,19 @@ export function ResultsPanel() {
     );
   }
 
-  const channelLabel = (key: string): { label: string; unit: string } => {
-    const c = result?.channels.find((ch) => channelKey(ch) === key);
-    return { label: c?.label ?? key, unit: c?.unit ?? "" };
-  };
+  const otherRuns = runs.filter((r) => r.id !== activeRun?.id);
 
   return (
     <div className="flex h-full">
-      {/* channel picker */}
-      <div className="flex w-[270px] shrink-0 flex-col border-r border-[color:var(--ss-border)]">
-        <div className="flex flex-col gap-1 border-b border-[color:var(--ss-border)] bg-[color:var(--ss-panel-alt)] p-1.5">
+      {/* run + channel picker */}
+      <div className="flex w-[280px] shrink-0 flex-col border-r border-[color:var(--ss-border)]">
+        <div className="flex flex-col gap-1.5 border-b border-[color:var(--ss-border)] bg-[color:var(--ss-panel-alt)] p-1.5">
           <div className="flex items-center gap-1">
             <select
               className="ss-input min-w-0 flex-1"
               value={activeRun?.id ?? ""}
               onChange={(e) => setActiveRun(e.target.value)}
-              title="Run shown in the chart"
+              title="Primary run (drives the channel list, table and summary)"
             >
               {runs.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -288,24 +375,61 @@ export function ResultsPanel() {
               <X size={13} />
             </button>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-[color:var(--ss-text-dim)]">Compare</span>
-            <select
-              className="ss-input min-w-0 flex-1"
-              value={compareRun?.id ?? ""}
-              onChange={(e) => setCompareRun(e.target.value || null)}
-              title="Overlay a second run (dashed)"
-            >
-              <option value="">none</option>
-              {runs
-                .filter((r) => r.id !== activeRun?.id)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {runLabel(r)}
-                  </option>
+
+          {/* overlay set */}
+          <div className="rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)]">
+            <div className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-[color:var(--ss-text-dim)]">
+              <Layers size={11} /> Overlay ({overlayRuns.length})
+              {family.length >= 2 && (
+                <button
+                  className="ml-auto rounded px-1 hover:bg-[color:var(--ss-hover)]"
+                  title="Overlay every run in this sweep family"
+                  onClick={() =>
+                    setOverlayRuns(family.filter((r) => r.id !== activeRun?.id).map((r) => r.id))
+                  }
+                >
+                  Overlay family
+                </button>
+              )}
+              {overlayRuns.length > 0 && (
+                <button
+                  className={`rounded px-1 hover:bg-[color:var(--ss-hover)] ${family.length >= 2 ? "" : "ml-auto"}`}
+                  onClick={clearOverlays}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {otherRuns.length === 0 ? (
+              <div className="px-1.5 pb-1 text-[10px] italic text-[color:var(--ss-text-dim)]">
+                Only one run — overlay appears once you have more.
+              </div>
+            ) : (
+              <div className="max-h-[104px] overflow-y-auto border-t border-[color:var(--ss-border)]">
+                {otherRuns.map((r) => (
+                  <label
+                    key={r.id}
+                    className="flex cursor-pointer items-center gap-1.5 px-1.5 py-0.5 text-[11px] hover:bg-[color:var(--ss-hover)]"
+                    title={runLabel(r)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={overlayRunIds.includes(r.id)}
+                      onChange={() => toggleOverlayRun(r.id)}
+                    />
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: overlayRunIds.includes(r.id) ? overlayColorOf(r.id) : "#c0c6d0" }}
+                    />
+                    <span className="truncate">
+                      {r.sweepValue !== undefined ? runShort(r) : `${r.caseName} · ${runTime(r)}`}
+                    </span>
+                  </label>
                 ))}
-            </select>
+              </div>
+            )}
           </div>
+
           <div className="flex items-center gap-1 rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] px-1.5">
             <Search size={12} className="shrink-0 text-[color:var(--ss-text-dim)]" />
             <input
@@ -347,7 +471,7 @@ export function ResultsPanel() {
                     />
                     <span
                       className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: selectedKeys.has(key) ? colorOf(key) : "#d0d5dd" }}
+                      style={{ background: selectedKeys.has(key) ? channelColor(key) : "#d0d5dd" }}
                     />
                     <span className="truncate">{c.label.split(" · ")[1] ?? c.label}</span>
                     <span className="ml-auto pr-1 text-[10px] text-[color:var(--ss-text-dim)]">
@@ -360,13 +484,20 @@ export function ResultsPanel() {
           ))}
         </div>
       </div>
+
       {/* chart + summary */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="ss-panel-toolbar">
           <span className="text-[11px] text-[color:var(--ss-text-dim)]">
-            {activeChannels.length} channel(s)
-            {compareRun && <span> · vs <b>{compareRun.caseName}</b> (dashed)</span>}
-            {result && (
+            {view === "sweep" ? (
+              <>Sweep · {family.length} run(s)</>
+            ) : (
+              <>
+                {selectedKeys.size} channel(s)
+                {multiRun && <span> · {plotRuns.length} runs overlaid</span>}
+              </>
+            )}
+            {result && view !== "sweep" && (
               <>
                 {" · "}
                 <b
@@ -386,13 +517,27 @@ export function ResultsPanel() {
             )}
           </span>
           <div className="ml-auto flex items-center gap-1">
+            {view === "sweep" && sweepMetrics.length > 0 && (
+              <select
+                className="ss-input max-w-[190px] py-0.5 text-[11px]"
+                value={sweepMetric}
+                onChange={(e) => setSweepMetric(e.target.value)}
+                title="Summary metric to plot against the swept value"
+              >
+                {sweepMetrics.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            )}
             <div className="flex overflow-hidden rounded border border-[color:var(--ss-border)]">
               <button
                 className={`flex items-center gap-1 px-2 py-1 text-[11px] ${
                   view === "chart" ? "bg-[color:var(--ss-active)] font-semibold" : "hover:bg-[color:var(--ss-hover)]"
                 }`}
                 onClick={() => setView("chart")}
-                title="Chart view"
+                title="Time-series chart"
               >
                 <LineChartIcon size={12} /> Chart
               </button>
@@ -405,10 +550,20 @@ export function ResultsPanel() {
               >
                 <Table2 size={12} /> Table
               </button>
+              <button
+                className={`flex items-center gap-1 border-l border-[color:var(--ss-border)] px-2 py-1 text-[11px] disabled:opacity-40 ${
+                  view === "sweep" ? "bg-[color:var(--ss-active)] font-semibold" : "hover:bg-[color:var(--ss-hover)]"
+                }`}
+                onClick={() => setView("sweep")}
+                disabled={family.length < 2}
+                title={family.length < 2 ? "Run a parameter sweep to enable this" : "Metric vs. swept value"}
+              >
+                <TrendingUp size={12} /> Sweep
+              </button>
             </div>
             <button
               className="ss-toolbtn border border-[color:var(--ss-border)]"
-              disabled={view !== "chart" || activeChannels.length === 0}
+              disabled={view === "table"}
               title="Export the chart as a PNG image"
               onClick={() =>
                 exportPng(
@@ -422,13 +577,14 @@ export function ResultsPanel() {
             </button>
             <button
               className="ss-toolbtn border border-[color:var(--ss-border)]"
-              disabled={!result || activeChannels.length === 0}
+              disabled={!result || selectedKeys.size === 0}
               onClick={() => result && exportCsv(result, selectedKeys, `simstudio-${activeRun?.caseName ?? "results"}`)}
             >
               <Download size={12} /> CSV
             </button>
           </div>
         </div>
+
         {view === "table" ? (
           <div className="min-h-0 flex-[3] overflow-auto">
             {activeChannels.length > 0 && tableData.length > 0 ? (
@@ -469,6 +625,67 @@ export function ResultsPanel() {
               </div>
             )}
           </div>
+        ) : view === "sweep" ? (
+          <div className="min-h-0 flex-[3] p-1" ref={chartHost}>
+            {sweepData.length > 0 && hasSize ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sweepData} margin={{ top: 10, right: 20, bottom: 16, left: 8 }}>
+                  <CartesianGrid stroke={theme === "dark" ? "#2a2f37" : "#eceff3"} />
+                  <XAxis
+                    dataKey="x"
+                    type="number"
+                    domain={["dataMin", "dataMax"]}
+                    tick={{ fontSize: 10 }}
+                    label={{
+                      value: `${sweepParam}${sweepUnit ? ` [${sweepUnit}]` : ""}`,
+                      position: "insideBottom",
+                      offset: -8,
+                      fontSize: 11,
+                    }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10 }}
+                    width={54}
+                    label={{
+                      value: metricUnit,
+                      angle: -90,
+                      position: "insideLeft",
+                      fontSize: 10,
+                      style: { textAnchor: "middle" },
+                    }}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: "var(--ss-accent)", strokeWidth: 1, strokeDasharray: "3 3" }}
+                    contentStyle={{
+                      fontSize: 11,
+                      background: "var(--ss-panel)",
+                      border: "1px solid var(--ss-border)",
+                      color: "var(--ss-text)",
+                    }}
+                    labelFormatter={(x) => `${sweepParam} = ${x}${sweepUnit ? ` ${sweepUnit}` : ""}`}
+                    formatter={(value) => [
+                      `${typeof value === "number" ? value.toLocaleString(undefined, { maximumFractionDigits: 4 }) : value} ${metricUnit}`,
+                      sweepMetric,
+                    ]}
+                  />
+                  <Line
+                    dataKey="y"
+                    type="monotone"
+                    stroke={PALETTE[0]}
+                    strokeWidth={1.8}
+                    dot={{ r: 3, fill: PALETTE[0] }}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-[12px] text-[color:var(--ss-text-dim)]">
+                {family.length < 2
+                  ? "Run a parameter sweep to see metric-vs-value here."
+                  : "This metric has no values across the family."}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="min-h-0 flex-[3] p-1" ref={chartHost}>
             {chartData.length > 0 && hasSize ? (
@@ -499,6 +716,7 @@ export function ResultsPanel() {
                     />
                   ))}
                   <Tooltip
+                    cursor={{ stroke: "var(--ss-accent)", strokeWidth: 1, strokeDasharray: "3 3" }}
                     contentStyle={{
                       fontSize: 11,
                       background: "var(--ss-panel)",
@@ -507,61 +725,33 @@ export function ResultsPanel() {
                     }}
                     labelFormatter={(t) => `t = ${t} s`}
                     formatter={(value, name) => {
-                      const raw = String(name);
-                      const isCmp = raw.startsWith("cmp:");
-                      const { label, unit } = channelLabel(isCmp ? raw.slice(4) : raw);
+                      const def = defByKey.get(String(name));
                       const v =
                         typeof value === "number"
                           ? value.toLocaleString(undefined, { maximumFractionDigits: 3 })
                           : String(value ?? "");
-                      return [`${v} ${unit}`, `${isCmp ? "↔ " : ""}${label}`];
+                      return [`${v} ${def?.unit ?? ""}`, def?.legend ?? String(name)];
                     }}
                   />
                   <Legend
-                    formatter={(key: string) => {
-                      const isCmp = key.startsWith("cmp:");
-                      const { label, unit } = channelLabel(isCmp ? key.slice(4) : key);
-                      return (
-                        <span style={{ fontSize: 10 }}>
-                          {isCmp ? "↔ " : ""}
-                          {label} [{unit}]
-                        </span>
-                      );
-                    }}
+                    formatter={(key: string) => (
+                      <span style={{ fontSize: 10 }}>{defByKey.get(key)?.legend ?? key}</span>
+                    )}
                   />
-                  {activeChannels.map((c) => {
-                    const key = channelKey(c);
-                    return (
-                      <Line
-                        key={key}
-                        yAxisId={c.unit}
-                        dataKey={key}
-                        type="linear"
-                        dot={false}
-                        strokeWidth={1.6}
-                        stroke={colorOf(key)}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
-                    );
-                  })}
-                  {compareChannels.map((c) => {
-                    const key = channelKey(c);
-                    return (
-                      <Line
-                        key={`cmp:${key}`}
-                        yAxisId={c.unit}
-                        dataKey={`cmp:${key}`}
-                        type="linear"
-                        dot={false}
-                        strokeWidth={1.4}
-                        strokeDasharray="4 3"
-                        stroke={colorOf(key)}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
-                    );
-                  })}
+                  {seriesDefs.map((d) => (
+                    <Line
+                      key={d.dataKey}
+                      yAxisId={d.unit}
+                      dataKey={d.dataKey}
+                      type="linear"
+                      dot={false}
+                      strokeWidth={1.6}
+                      strokeDasharray={d.dash || undefined}
+                      stroke={d.color}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -571,33 +761,41 @@ export function ResultsPanel() {
             )}
           </div>
         )}
-        {result && result.summary.length > 0 && (
-          <div className="max-h-[130px] shrink-0 overflow-y-auto border-t border-[color:var(--ss-border)]">
+
+        {result && result.summary.length > 0 && view !== "sweep" && (
+          <div className="max-h-[130px] shrink-0 overflow-auto border-t border-[color:var(--ss-border)]">
             <table className="w-full border-collapse">
               <thead className="sticky top-0">
                 <tr>
                   <th className="ss-th">Summary value</th>
-                  <th className="ss-th w-[110px] text-right">Value</th>
-                  {compareResult && <th className="ss-th w-[110px] text-right">Compare</th>}
-                  <th className="ss-th w-[64px]">Unit</th>
+                  {plotRuns.map((r, i) => (
+                    <th key={r.id} className="ss-th w-[110px] text-right" title={runLabel(r)}>
+                      <span style={{ color: multiRun ? runColor(i) : undefined }}>
+                        {multiRun ? runShort(r) : "Value"}
+                      </span>
+                    </th>
+                  ))}
+                  <th className="ss-th w-[56px]">Unit</th>
                 </tr>
               </thead>
               <tbody>
-                {result.summary.map((s, i) => {
-                  const cmp = compareResult?.summary.find((cs) => cs.label === s.label);
-                  return (
-                    <tr key={i} className="hover:bg-[color:var(--ss-hover)]">
-                      <td className="ss-td">{s.label}</td>
-                      <td className="ss-td text-right font-mono">{s.value.toLocaleString()}</td>
-                      {compareResult && (
-                        <td className="ss-td text-right font-mono text-[color:var(--ss-text-dim)]">
-                          {cmp ? cmp.value.toLocaleString() : "—"}
+                {result.summary.map((s, i) => (
+                  <tr key={i} className="hover:bg-[color:var(--ss-hover)]">
+                    <td className="ss-td">{s.label}</td>
+                    {plotRuns.map((r, ri) => {
+                      const v = r.result.summary.find((x) => x.label === s.label)?.value;
+                      return (
+                        <td
+                          key={r.id}
+                          className={`ss-td text-right font-mono ${ri > 0 ? "text-[color:var(--ss-text-dim)]" : ""}`}
+                        >
+                          {typeof v === "number" ? v.toLocaleString() : "—"}
                         </td>
-                      )}
-                      <td className="ss-td text-[color:var(--ss-text-dim)]">{s.unit}</td>
-                    </tr>
-                  );
-                })}
+                      );
+                    })}
+                    <td className="ss-td text-[color:var(--ss-text-dim)]">{s.unit}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

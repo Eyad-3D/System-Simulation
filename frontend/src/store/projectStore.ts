@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 import * as api from "../api";
 import { loadDraft } from "../persist";
@@ -208,9 +209,9 @@ interface ProjectState {
   /** rolling history of simulation runs (newest first, capped at MAX_RUNS) */
   runs: SimRun[];
   activeCaseId: string | null;
-  /** run shown in Results; second (optional) run overlaid for comparison */
+  /** run shown in Results (primary); additional runs overlaid on the chart */
   activeRunId: string | null;
-  compareRunId: string | null;
+  overlayRunIds: string[];
   running: boolean;
   checking: boolean;
   /** latest values per "elementId:portId" while (and after) a live run */
@@ -295,7 +296,11 @@ interface ProjectState {
   runSweep: (config: SweepConfig) => Promise<void>;
   stopRun: () => void;
   setActiveRun: (runId: string | null) => void;
-  setCompareRun: (runId: string | null) => void;
+  /** Toggle a run in the overlay set (ignored for the active run). */
+  toggleOverlayRun: (runId: string) => void;
+  /** Replace the overlay set outright (used to overlay a whole sweep family). */
+  setOverlayRuns: (runIds: string[]) => void;
+  clearOverlays: () => void;
   removeRun: (runId: string) => void;
   clearRuns: () => void;
 }
@@ -330,6 +335,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     projectToRun: Project,
     caseId: string,
     caseName: string,
+    extra?: Partial<SimRun>,
   ): Promise<SimResult> {
     const { libraryById, log } = get();
     const runId = uid("run");
@@ -347,6 +353,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       startedAt: Date.now(),
       status: "running",
       result: partial,
+      ...extra,
     };
     set((s) => ({
       runs: [newRun, ...s.runs].slice(0, MAX_RUNS),
@@ -433,7 +440,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     runs: [],
     activeCaseId: null,
     activeRunId: null,
-    compareRunId: null,
+    overlayRunIds: [],
     running: false,
     checking: false,
     liveValues: {},
@@ -858,7 +865,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         activeSystemId: rootId,
         activeCaseId: caseId,
         activeRunId: null,
-        compareRunId: null,
+        overlayRunIds: [],
         selectedElementId: null,
         past: [],
         future: [],
@@ -877,7 +884,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           activeSystemId: project.systems.find((s) => s.parentId === null)?.id ?? project.systems[0]?.id,
           activeCaseId: project.cases[0]?.id ?? null,
           activeRunId: null,
-          compareRunId: null,
+          overlayRunIds: [],
           selectedElementId: null,
           past: [],
           future: [],
@@ -929,7 +936,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           activeSystemId: project.systems.find((s) => s.parentId === null)?.id ?? project.systems[0]?.id,
           activeCaseId: project.cases[0]?.id ?? null,
           activeRunId: null,
-          compareRunId: null,
+          overlayRunIds: [],
           selectedElementId: null,
           past: [],
           future: [],
@@ -1048,7 +1055,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
       // pre-flight validation gate: block the run on error-level data checks so
       // broken models fail fast (and visibly) instead of deep inside the solver.
-      set({ running: true });
+      // A fresh single run starts with a clean overlay set.
+      set({ running: true, overlayRunIds: [] });
       if (!(await get().passesRunGate())) {
         set({ running: false });
         return;
@@ -1098,7 +1106,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const el = project.systems.flatMap((s) => s.elements).find((e) => e.id === elementId);
       const pdef = el && libraryById[el.componentDefId]?.parameters.find((p) => p.key === paramKey);
       const paramLabel = pdef ? pdef.label : paramKey;
-      const unit = pdef && pdef.unit !== "-" ? ` ${pdef.unit}` : "";
+      const paramUnit = pdef && pdef.unit !== "-" ? pdef.unit : "";
+      const unit = paramUnit ? ` ${paramUnit}` : "";
+      const sweepId = uid("sweep");
 
       set({ running: true });
       if (!(await get().passesRunGate())) {
@@ -1125,7 +1135,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           };
           const label = `${simCase.name} · ${paramLabel}=${value}${unit}`;
           try {
-            await executeRun(runProject, caseId, label);
+            await executeRun(runProject, caseId, label, {
+              sweepId,
+              sweepParam: paramLabel,
+              sweepValue: value,
+              sweepUnit: paramUnit,
+            });
             completed += 1;
           } catch (e) {
             log("error", `Sweep point ${paramLabel}=${value} failed: ${(e as Error).message}`);
@@ -1140,6 +1155,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           "info",
           `Sweep finished — ${completed} of ${values.length} run(s) stored in Results.`,
         );
+        // overlay the whole family: lowest swept value is the primary run, the
+        // rest are overlaid, so all N appear together in Results by default.
+        const family = get()
+          .runs.filter((r) => r.sweepId === sweepId)
+          .sort((a, b) => (a.sweepValue ?? 0) - (b.sweepValue ?? 0));
+        if (family.length > 0) {
+          set({
+            activeRunId: family[0].id,
+            overlayRunIds: family.slice(1).map((r) => r.id),
+          });
+        }
         useUIStore.getState().setRibbonTab("results");
       } else {
         log("warning", "Sweep produced no runs.");
@@ -1176,19 +1202,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    setActiveRun: (runId) => set({ activeRunId: runId }),
-    setCompareRun: (runId) =>
-      set((s) => ({ compareRunId: runId === s.activeRunId ? null : runId })),
+    setActiveRun: (runId) =>
+      // a run can't overlay itself — drop it from the overlay set if selected
+      set((s) => ({
+        activeRunId: runId,
+        overlayRunIds: s.overlayRunIds.filter((id) => id !== runId),
+      })),
+    toggleOverlayRun: (runId) =>
+      set((s) => {
+        if (runId === s.activeRunId) return {};
+        return {
+          overlayRunIds: s.overlayRunIds.includes(runId)
+            ? s.overlayRunIds.filter((id) => id !== runId)
+            : [...s.overlayRunIds, runId],
+        };
+      }),
+    setOverlayRuns: (runIds) =>
+      set((s) => ({ overlayRunIds: runIds.filter((id) => id !== s.activeRunId) })),
+    clearOverlays: () => set({ overlayRunIds: [] }),
     removeRun: (runId) =>
       set((s) => {
         const runs = s.runs.filter((r) => r.id !== runId);
         return {
           runs,
           activeRunId: s.activeRunId === runId ? (runs[0]?.id ?? null) : s.activeRunId,
-          compareRunId: s.compareRunId === runId ? null : s.compareRunId,
+          overlayRunIds: s.overlayRunIds.filter((id) => id !== runId),
         };
       }),
-    clearRuns: () => set({ runs: [], activeRunId: null, compareRunId: null }),
+    clearRuns: () => set({ runs: [], activeRunId: null, overlayRunIds: [] }),
   };
 });
 
@@ -1198,9 +1239,17 @@ export function useActiveRun(): SimRun | null {
   return useProjectStore((s) => s.runs.find((r) => r.id === s.activeRunId) ?? null);
 }
 
-export function useCompareRun(): SimRun | null {
-  return useProjectStore((s) =>
-    s.compareRunId ? (s.runs.find((r) => r.id === s.compareRunId) ?? null) : null,
+/** Runs overlaid on the active run in Results (in the order they were added).
+ *  Derived via useMemo from stable slices so the selector stays cacheable. */
+export function useOverlayRuns(): SimRun[] {
+  const overlayRunIds = useProjectStore((s) => s.overlayRunIds);
+  const runs = useProjectStore((s) => s.runs);
+  return useMemo(
+    () =>
+      overlayRunIds
+        .map((id) => runs.find((r) => r.id === id))
+        .filter((r): r is SimRun => Boolean(r)),
+    [overlayRunIds, runs],
   );
 }
 

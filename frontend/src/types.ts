@@ -164,6 +164,12 @@ export interface SimRun {
   startedAt: number;
   status: SimResult["status"] | "running";
   result: SimResult;
+  /** Set on runs produced by a parameter sweep — groups the family and carries
+   *  the swept value so Results can overlay them and plot metric-vs-value. */
+  sweepId?: string;
+  sweepParam?: string; // display label of the swept parameter
+  sweepValue?: number; // the value used for this run
+  sweepUnit?: string;
 }
 
 export interface DataCheck {
