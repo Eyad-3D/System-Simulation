@@ -145,20 +145,22 @@
       "description": "Equivalent-circuit battery pack: OCV(SOC) lookup table with series resistance R0 and an optional RC pair for voltage transients (RC disabled when either RC parameter is 0). SOC integrates over discharge and recuperation; charging power is limited by the maximum charge power.",
       "ports": [
         {
-          "id": "vs1",
-          "name": "Voltage Source 1",
+          "id": "pos",
+          "name": "Positive Terminal (+)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "right"
+          "side": "right",
+          "polarity": "positive"
         },
         {
-          "id": "vs2",
-          "name": "Voltage Source 2",
+          "id": "neg",
+          "name": "Negative Terminal (−)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "right"
+          "side": "right",
+          "polarity": "negative"
         },
         {
           "id": "sig_soc",
@@ -267,12 +269,22 @@
       "description": "Electric machine with voltage-dependent full-load torque map, power-loss map (motor + inverter) and drag torque. Motoring and generating (recuperation) quadrants; generator limit mirrors the full-load map scaled by the Q4 scale parameter. Traction command input is a normalized demand in [-1, 1].",
       "ports": [
         {
-          "id": "terminal",
-          "name": "Electric Terminal",
+          "id": "pos",
+          "name": "Positive Terminal (+)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "left"
+          "side": "left",
+          "polarity": "positive"
+        },
+        {
+          "id": "neg",
+          "name": "Negative Terminal (−)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left",
+          "polarity": "negative"
         },
         {
           "id": "shaft",
@@ -448,20 +460,40 @@
       "description": "DC-DC converter with constant conversion efficiency. Unidirectional: draws at Terminal A, supplies at Terminal B. When Terminal B feeds a bus with a battery, the converter runs at its power setpoint (parameter or signal) and the battery balances the rest — the fuel-cell hybrid pattern.",
       "ports": [
         {
-          "id": "terminal_a",
-          "name": "Terminal A (HV in)",
+          "id": "a_pos",
+          "name": "Input + (HV in)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "left"
+          "side": "left",
+          "polarity": "positive"
         },
         {
-          "id": "terminal_b",
-          "name": "Terminal B (out)",
+          "id": "a_neg",
+          "name": "Input − (HV in)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "right"
+          "side": "left",
+          "polarity": "negative"
+        },
+        {
+          "id": "b_pos",
+          "name": "Output + ",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right",
+          "polarity": "positive"
+        },
+        {
+          "id": "b_neg",
+          "name": "Output − ",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right",
+          "polarity": "negative"
         },
         {
           "id": "sig_setpoint_in",
@@ -525,12 +557,22 @@
       "description": "Ideal DC voltage source. Supplies unlimited power at a fixed voltage.",
       "ports": [
         {
-          "id": "terminal",
-          "name": "Electric Terminal",
+          "id": "pos",
+          "name": "Positive Terminal (+)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "right"
+          "side": "right",
+          "polarity": "positive"
+        },
+        {
+          "id": "neg",
+          "name": "Negative Terminal (−)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right",
+          "polarity": "negative"
         },
         {
           "id": "sig_voltage",
@@ -624,12 +666,22 @@
       "description": "Constant electrical load (auxiliaries, HVAC, LV net). Draws a fixed power, optionally overridden by a signal input.",
       "ports": [
         {
-          "id": "terminal",
-          "name": "Electric Terminal",
+          "id": "pos",
+          "name": "Positive Terminal (+)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "left"
+          "side": "left",
+          "polarity": "positive"
+        },
+        {
+          "id": "neg",
+          "name": "Negative Terminal (−)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "left",
+          "polarity": "negative"
         },
         {
           "id": "sig_demand_in",
@@ -1698,12 +1750,22 @@
       "description": "PEM fuel cell stack: polarization curve (stack voltage vs. current) with a current limit; hydrogen consumption follows electrical energy. Draws from the Hydrogen Tank automatically. Typically feeds the HV bus through a DC-DC converter running at a power setpoint.",
       "ports": [
         {
-          "id": "terminal",
-          "name": "Electric Terminal",
+          "id": "pos",
+          "name": "Positive Terminal (+)",
           "direction": "bidirectional",
           "kind": "electrical",
           "unitGroup": "Power",
-          "side": "right"
+          "side": "right",
+          "polarity": "positive"
+        },
+        {
+          "id": "neg",
+          "name": "Negative Terminal (−)",
+          "direction": "bidirectional",
+          "kind": "electrical",
+          "unitGroup": "Power",
+          "side": "right",
+          "polarity": "negative"
         },
         {
           "id": "sig_voltage",

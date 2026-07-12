@@ -23,6 +23,8 @@ export interface PortDef {
   kind: PortKind;
   unitGroup?: string;
   side?: "left" | "right"; // canvas layout hint
+  /** Electrical polarity: positive (supply/+) or negative (return/−). */
+  polarity?: "positive" | "negative";
 }
 
 export interface AxisDef {
@@ -65,8 +67,12 @@ export interface ElementInstance {
   parameterOverrides: Record<string, ParamValue>;
   /** Per-instance signal ports; only honored when the def allows them. */
   dynamicPorts?: PortDef[];
-  /** Per-instance canvas pin placement (Shift+click a pin to move it). */
+  /** Per-instance canvas pin placement (Shift+drag a pin to move it). */
   portSides?: Record<string, PortSide>;
+  /** Per-instance pin offset along its side, 0..1 (set by Shift+drag). */
+  portOffsets?: Record<string, number>;
+  /** Per-instance canvas node size in flow units (drag a node's edges to resize). */
+  size?: { width: number; height: number };
   isSubSystem?: boolean;
   subSystemId?: string | null;
 }
@@ -99,10 +105,19 @@ export interface SimCase {
   id: string;
   name: string;
   duration: number;
-  /** Recording interval in seconds; the solver sub-steps internally. */
+  /** Solver step in seconds; signals/blocks evaluate here, mechanics sub-step internally. */
   timeStep: number;
+  /** Record a data point every N solver steps (output decimation); 1 = every step. */
+  outputEvery?: number;
   /** 0 = as fast as possible; N > 0 = pace at N× real time (live tuning). */
   realtimeFactor?: number;
+  /**
+   * Per-case parameter overrides: { elementId: { paramKey: value } }. Layered
+   * on top of each element's own parameterOverrides at solve time, so a case
+   * can tweak values — and a parameter sweep can vary one — without editing the
+   * shared topology.
+   */
+  parameterOverrides?: Record<string, Record<string, ParamValue>>;
 }
 
 export interface Project {
@@ -138,6 +153,17 @@ export interface SimResult {
   messages: SimMessage[];
   channels: Channel[];
   summary: SummaryValue[];
+}
+
+/** One recorded simulation run (client-side history; not persisted server-side). */
+export interface SimRun {
+  id: string;
+  caseId: string;
+  caseName: string;
+  /** epoch ms when the run started (used for the run label / ordering). */
+  startedAt: number;
+  status: SimResult["status"] | "running";
+  result: SimResult;
 }
 
 export interface DataCheck {

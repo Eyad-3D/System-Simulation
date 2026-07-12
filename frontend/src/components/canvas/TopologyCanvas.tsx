@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -6,6 +6,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  ViewportPortal,
   type Connection as RFConnection,
   type Edge,
   type EdgeChange,
@@ -14,11 +15,18 @@ import {
 } from "@xyflow/react";
 import {
   Bookmark,
+  BoxSelect,
   ChevronRight,
+  ClipboardPaste,
+  Copy,
+  CopyPlus,
   Grid2x2,
+  Magnet,
   Map,
   Maximize,
+  Pencil,
   Redo2,
+  Settings2,
   Trash2,
   Undo2,
   ZoomIn,
@@ -34,6 +42,43 @@ import type { PortKind } from "../../types";
 import { ElementNode, type ElementFlowNode } from "./ElementNode";
 
 const nodeTypes = { element: ElementNode };
+
+const GRID = 22; // background grid gap; snap uses the same pitch
+const ALIGN_THRESH = 5; // flow-unit tolerance for alignment guides
+const DEFAULT_W = 92;
+const DEFAULT_H = 78;
+
+type CtxMenu = { x: number; y: number; nodeId: string | null };
+
+function MenuBtn({
+  icon: Icon,
+  label,
+  onClick,
+  kbd,
+  disabled,
+  danger,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  onClick: () => void;
+  kbd?: string;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      className={`flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-[color:var(--ss-hover)] disabled:opacity-40 disabled:hover:bg-transparent ${
+        danger ? "text-red-600" : ""
+      }`}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <Icon size={13} className="shrink-0" />
+      <span className="flex-1">{label}</span>
+      {kbd && <span className="text-[10px] text-[color:var(--ss-text-dim)]">{kbd}</span>}
+    </button>
+  );
+}
 
 const KIND_COLOR: Record<PortKind, string> = {
   electrical: "#e08600",
@@ -58,11 +103,34 @@ function TopologyCanvasInner() {
   const [selectedEdges, setSelectedEdges] = useState<Set<string>>(new Set());
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+  const [snap, setSnap] = useState(false);
+  const [menu, setMenu] = useState<CtxMenu | null>(null);
+  const [guides, setGuides] = useState<{ x: number[]; y: number[] } | null>(null);
   const theme = useUIStore((s) => s.theme);
 
-  // sync external selection (properties tree, elements list) into the canvas
+  const pendingSelection = useProjectStore((s) => s.pendingCanvasSelection);
+  const clipboard = useProjectStore((s) => s.clipboard);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const hovered = useRef(false);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+
+  // apply a store-requested selection (e.g. freshly pasted/duplicated elements)
   useEffect(() => {
-    setSelectedNodes(selectedElementId ? new Set([selectedElementId]) : new Set());
+    if (!pendingSelection) return;
+    setSelectedNodes(new Set(pendingSelection));
+    store.getState().clearPendingSelection();
+  }, [pendingSelection, store]);
+
+  // sync external selection (properties tree, elements list) into the canvas.
+  // Must not collapse a canvas-originated multi-selection: when the selected
+  // element is already part of the current canvas selection, leave it alone;
+  // only a genuinely new (external) selection replaces it with a single node.
+  useEffect(() => {
+    setSelectedNodes((prev) => {
+      if (!selectedElementId) return prev.size ? new Set() : prev;
+      if (prev.has(selectedElementId)) return prev;
+      return new Set([selectedElementId]);
+    });
   }, [selectedElementId]);
 
   useEffect(() => {
@@ -129,6 +197,9 @@ function TopologyCanvasInner() {
       for (const ch of changes) {
         if (ch.type === "position" && ch.position) {
           store.getState().moveElement(ch.id, ch.position);
+        } else if (ch.type === "dimensions" && "resizing" in ch && ch.dimensions) {
+          // NodeResizer-driven resize (auto-measure changes have no `resizing` flag)
+          store.getState().resizeElement(ch.id, ch.dimensions);
         } else if (ch.type === "select") {
           selChanged = true;
           if (ch.selected) sel.add(ch.id);
@@ -198,6 +269,84 @@ function TopologyCanvasInner() {
     setSelectedEdges(new Set());
     setSelectedNodes(new Set());
   }, [selectedEdges, selectedNodes, store]);
+
+  // reconnect an existing edge to a different port (same kind only)
+  const onReconnect = useCallback(
+    (oldEdge: Edge, conn: RFConnection) => {
+      if (!conn.source || !conn.target || !conn.sourceHandle || !conn.targetHandle) return;
+      const a = portOf(conn.source, conn.sourceHandle);
+      const b = portOf(conn.target, conn.targetHandle);
+      if (!a || !b || a.kind === "signal" || a.kind !== b.kind) return; // invalid → keep old edge
+      const st = store.getState();
+      st.removeConnections([oldEdge.id]);
+      st.addConnection(conn.source, conn.sourceHandle, conn.target, conn.targetHandle);
+    },
+    [portOf, store],
+  );
+
+  // --- alignment guides while dragging (visual; snapping stays on the grid) ---
+  const onNodeDrag = useCallback(
+    (_: unknown, node: ElementFlowNode) => {
+      if (!system) return;
+      const w = node.measured?.width ?? DEFAULT_W;
+      const h = node.measured?.height ?? DEFAULT_H;
+      const aXs = [node.position.x, node.position.x + w / 2, node.position.x + w];
+      const aYs = [node.position.y, node.position.y + h / 2, node.position.y + h];
+      const gx = new Set<number>();
+      const gy = new Set<number>();
+      for (const el of system.elements) {
+        if (el.id === node.id) continue;
+        const ew = el.size?.width ?? DEFAULT_W;
+        const eh = el.size?.height ?? DEFAULT_H;
+        const bXs = [el.position.x, el.position.x + ew / 2, el.position.x + ew];
+        const bYs = [el.position.y, el.position.y + eh / 2, el.position.y + eh];
+        for (const a of aXs) for (const b of bXs) if (Math.abs(a - b) <= ALIGN_THRESH) gx.add(b);
+        for (const a of aYs) for (const b of bYs) if (Math.abs(a - b) <= ALIGN_THRESH) gy.add(b);
+      }
+      setGuides(gx.size || gy.size ? { x: [...gx], y: [...gy] } : null);
+    },
+    [system],
+  );
+  const onNodeDragStop = useCallback(() => setGuides(null), []);
+
+  // context-menu helpers -----------------------------------------------------
+  const openMenuAt = (clientX: number, clientY: number, nodeId: string | null) => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    setMenu({ x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0), nodeId });
+  };
+  const closeMenu = () => setMenu(null);
+
+  // copy / duplicate / paste keyboard shortcuts (only while over the canvas)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!hovered.current) return;
+      const meta = e.ctrlKey || e.metaKey;
+      if (!meta) return;
+      const t = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable) return;
+      const st = store.getState();
+      const k = e.key.toLowerCase();
+      if (k === "c" && selectedNodes.size > 0) {
+        st.copyElements([...selectedNodes]);
+      } else if (k === "d" && selectedNodes.size > 0) {
+        e.preventDefault();
+        st.duplicateElements([...selectedNodes]);
+      } else if (k === "v" && st.clipboard) {
+        e.preventDefault();
+        st.pasteClipboard(pointer.current ?? undefined);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedNodes, store]);
+
+  // close the context menu on Escape / outside interactions
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeMenu();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
 
   const breadcrumb = project && activeSystemId ? systemBreadcrumb(project, activeSystemId) : [];
   const past = useProjectStore((s) => s.past.length);
@@ -271,6 +420,13 @@ function TopologyCanvasInner() {
             <Grid2x2 size={14} />
           </button>
           <button
+            className={`ss-toolbtn ${snap ? "bg-[color:var(--ss-active)]" : ""}`}
+            title="Snap elements to the grid while dragging"
+            onClick={() => setSnap((v) => !v)}
+          >
+            <Magnet size={14} />
+          </button>
+          <button
             className={`ss-toolbtn ${showMiniMap ? "bg-[color:var(--ss-active)]" : ""}`}
             title="Toggle minimap"
             onClick={() => setShowMiniMap((v) => !v)}
@@ -283,7 +439,13 @@ function TopologyCanvasInner() {
         </div>
       </div>
       <div
+        ref={wrapperRef}
         className="relative min-h-0 flex-1"
+        onMouseEnter={() => (hovered.current = true)}
+        onMouseLeave={() => (hovered.current = false)}
+        onMouseMove={(e) => {
+          pointer.current = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        }}
         onDoubleClick={(e) => {
           // Coordinate hit-test: the second click of a double-click can land
           // on the pane while React re-renders the selection, so relying on
@@ -291,13 +453,16 @@ function TopologyCanvasInner() {
           // everything else opens the parameter dialog.
           if (!system) return;
           const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-          const hit = system.elements.find(
-            (el) =>
+          const hit = system.elements.find((el) => {
+            const w = el.size?.width ?? 92;
+            const h = el.size?.height ?? 78;
+            return (
               pos.x >= el.position.x - 6 &&
-              pos.x <= el.position.x + 98 &&
+              pos.x <= el.position.x + w + 6 &&
               pos.y >= el.position.y - 6 &&
-              pos.y <= el.position.y + 84,
-          );
+              pos.y <= el.position.y + h + 6
+            );
+          });
           if (!hit) return;
           if (hit.isSubSystem && hit.subSystemId) {
             store.getState().setActiveSystem(hit.subSystemId);
@@ -313,8 +478,29 @@ function TopologyCanvasInner() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onReconnect={onReconnect}
           isValidConnection={isValidConnection}
           onNodeDragStart={() => store.getState().beginHistory()}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
+          onNodeContextMenu={(e, node) => {
+            e.preventDefault();
+            if (!selectedNodes.has(node.id)) {
+              setSelectedNodes(new Set([node.id]));
+              store.getState().select(node.id);
+            }
+            openMenuAt(e.clientX, e.clientY, node.id);
+          }}
+          onPaneContextMenu={(e) => {
+            e.preventDefault();
+            openMenuAt(
+              (e as React.MouseEvent).clientX,
+              (e as React.MouseEvent).clientY,
+              null,
+            );
+          }}
+          snapToGrid={snap}
+          snapGrid={[GRID, GRID]}
           onNodeDoubleClick={(_, node) => {
             const el = node.data.element;
             if (el.isSubSystem && el.subSystemId) {
@@ -333,6 +519,7 @@ function TopologyCanvasInner() {
             setSelectedNodes(new Set());
             setSelectedEdges(new Set());
             store.getState().select(null);
+            closeMenu();
           }}
           onDragOver={(e) => {
             e.preventDefault();
@@ -347,6 +534,9 @@ function TopologyCanvasInner() {
           }}
           deleteKeyCode={["Delete", "Backspace"]}
           nodeDragThreshold={4}
+          multiSelectionKeyCode={["Control", "Meta", "Shift"]}
+          selectionKeyCode={["Shift"]}
+          selectNodesOnDrag
           zoomOnDoubleClick={false}
           colorMode={theme}
           fitView
@@ -357,9 +547,41 @@ function TopologyCanvasInner() {
           {showGrid && (
             <Background
               variant={BackgroundVariant.Lines}
-              gap={22}
+              gap={GRID}
               color={theme === "dark" ? "#262b33" : "#eceff3"}
             />
+          )}
+          {guides && (
+            <ViewportPortal>
+              {guides.x.map((x) => (
+                <div
+                  key={`gx-${x}`}
+                  className="pointer-events-none absolute"
+                  style={{
+                    left: x,
+                    top: -100000,
+                    width: 1,
+                    height: 200000,
+                    background: "var(--ss-accent)",
+                    opacity: 0.7,
+                  }}
+                />
+              ))}
+              {guides.y.map((y) => (
+                <div
+                  key={`gy-${y}`}
+                  className="pointer-events-none absolute"
+                  style={{
+                    top: y,
+                    left: -100000,
+                    height: 1,
+                    width: 200000,
+                    background: "var(--ss-accent)",
+                    opacity: 0.7,
+                  }}
+                />
+              ))}
+            </ViewportPortal>
           )}
           {showMiniMap && (
             <MiniMap
@@ -376,6 +598,99 @@ function TopologyCanvasInner() {
         {system && system.elements.length === 0 && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-[color:var(--ss-text-dim)]">
             Drag components from the library onto the canvas to build the topology.
+          </div>
+        )}
+        {menu && (
+          <div
+            className="absolute z-50 min-w-[176px] rounded-md border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] py-1 shadow-lg"
+            style={{
+              left: Math.min(menu.x, (wrapperRef.current?.clientWidth ?? 9999) - 184),
+              top: Math.min(menu.y, (wrapperRef.current?.clientHeight ?? 9999) - 200),
+            }}
+          >
+            {menu.nodeId ? (
+              <>
+                <MenuBtn
+                  icon={Settings2}
+                  label="Parameters"
+                  onClick={() => {
+                    const el = system?.elements.find((e) => e.id === menu.nodeId);
+                    if (el?.isSubSystem && el.subSystemId) store.getState().setActiveSystem(el.subSystemId);
+                    else useUIStore.getState().openParamDialog(menu.nodeId!);
+                    closeMenu();
+                  }}
+                />
+                <MenuBtn
+                  icon={Pencil}
+                  label="Rename…"
+                  onClick={() => {
+                    const el = system?.elements.find((e) => e.id === menu.nodeId);
+                    const name = window.prompt("Element name", el?.label ?? "");
+                    if (name != null && name.trim()) store.getState().renameElement(menu.nodeId!, name.trim());
+                    closeMenu();
+                  }}
+                />
+                <div className="my-1 h-px bg-[color:var(--ss-border)]" />
+                <MenuBtn
+                  icon={CopyPlus}
+                  label={`Duplicate${selectedNodes.size > 1 ? ` (${selectedNodes.size})` : ""}`}
+                  kbd="Ctrl+D"
+                  onClick={() => {
+                    store.getState().duplicateElements([...selectedNodes]);
+                    closeMenu();
+                  }}
+                />
+                <MenuBtn
+                  icon={Copy}
+                  label={`Copy${selectedNodes.size > 1 ? ` (${selectedNodes.size})` : ""}`}
+                  kbd="Ctrl+C"
+                  onClick={() => {
+                    store.getState().copyElements([...selectedNodes]);
+                    closeMenu();
+                  }}
+                />
+                <div className="my-1 h-px bg-[color:var(--ss-border)]" />
+                <MenuBtn
+                  icon={Trash2}
+                  label={`Delete${selectedNodes.size > 1 ? ` (${selectedNodes.size})` : ""}`}
+                  kbd="Del"
+                  danger
+                  onClick={() => {
+                    deleteSelection();
+                    closeMenu();
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <MenuBtn
+                  icon={ClipboardPaste}
+                  label="Paste"
+                  kbd="Ctrl+V"
+                  disabled={!clipboard}
+                  onClick={() => {
+                    store.getState().pasteClipboard(pointer.current ?? undefined);
+                    closeMenu();
+                  }}
+                />
+                <MenuBtn
+                  icon={BoxSelect}
+                  label="Select all"
+                  onClick={() => {
+                    if (system) setSelectedNodes(new Set(system.elements.map((e) => e.id)));
+                    closeMenu();
+                  }}
+                />
+                <MenuBtn
+                  icon={Maximize}
+                  label="Fit view"
+                  onClick={() => {
+                    void fitView({ padding: 0.15, duration: 200 });
+                    closeMenu();
+                  }}
+                />
+              </>
+            )}
           </div>
         )}
       </div>

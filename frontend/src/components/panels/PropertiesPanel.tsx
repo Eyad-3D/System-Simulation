@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState } from "react";
-import { Box, CornerDownRight, FolderTree, Plus, Radio, Trash2 } from "lucide-react";
+import { Box, Columns3, CornerDownRight, FolderTree, Plus, Radio, Rows3, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../store/projectStore";
 import { componentIcon } from "../../icons";
+import { SpreadsheetGrid, type GridCell, type GridRange } from "../SpreadsheetGrid";
 import type {
   AxisDef,
   ComponentDef,
@@ -18,7 +19,17 @@ function sortedNumericKeys(obj: Record<string, unknown>): string[] {
   return Object.keys(obj).sort((a, b) => Number(a) - Number(b));
 }
 
-/** Editable grid for a 1D lookup table {x: y}. */
+/** Next axis value after `keys`, extrapolating the last step (fallback if flat). */
+function nextAxisKey(keys: string[], fallback: number): number {
+  const last = keys.length ? Number(keys[keys.length - 1]) : 0;
+  const prev = keys.length > 1 ? Number(keys[keys.length - 2]) : last - fallback;
+  const step = keys.length > 1 ? last - prev : fallback;
+  return last + (step || fallback);
+}
+
+const GRID_HINT = "Click a cell to edit · drag or Shift+click to select a range · Ctrl+C / Ctrl+V to copy & paste from Excel";
+
+/** Excel-style editable grid for a 1D lookup table {x: y}. */
 function Table1DEditor({
   value,
   axis,
@@ -32,91 +43,116 @@ function Table1DEditor({
   valueUnit: string;
   onChange: (v: Table1D) => void;
 }) {
+  const [selRange, setSelRange] = useState<GridRange | null>(null);
   const keys = sortedNumericKeys(value);
-  const commitX = (oldKey: string, next: string) => {
-    const n = Number(next);
-    if (!Number.isFinite(n) || String(n) === oldKey) return;
-    const copy: Table1D = { ...value };
-    const y = copy[oldKey];
-    delete copy[oldKey];
-    copy[String(n)] = y;
-    onChange(copy);
+  const pairs: [string, string][] = keys.map((k) => [k, String(value[k])]);
+
+  const rebuild = (rows: [string, string][]): Table1D => {
+    const obj: Table1D = {};
+    for (const [x, y] of rows) {
+      const xs = String(x).trim();
+      const nx = Number(xs);
+      if (xs === "" || !Number.isFinite(nx)) continue;
+      const ny = Number(String(y).trim());
+      obj[String(nx)] = Number.isFinite(ny) ? ny : 0;
+    }
+    return obj;
   };
-  const commitY = (key: string, next: string) => {
-    const n = Number(next);
-    if (!Number.isFinite(n)) return;
-    onChange({ ...value, [key]: n });
+
+  const matrix: GridCell[][] = [
+    [
+      { text: `${axis.name} (${axis.unit})`, kind: "colHeader", readOnly: true },
+      { text: `${valueLabel} (${valueUnit})`, kind: "colHeader", readOnly: true },
+    ],
+    ...pairs.map(
+      ([x, y]): GridCell[] => [
+        { text: x, kind: "body" },
+        { text: y, kind: "body" },
+      ],
+    ),
+  ];
+
+  const commit = (r: number, c: number, text: string) => {
+    if (r === 0) return;
+    const rows = pairs.map((p) => [...p] as [string, string]);
+    if (!rows[r - 1]) return;
+    rows[r - 1][c] = text;
+    onChange(rebuild(rows));
   };
-  const addRow = () => {
-    const last = keys.length ? Number(keys[keys.length - 1]) : 0;
-    const prev = keys.length > 1 ? Number(keys[keys.length - 2]) : last - 1;
-    const step = keys.length > 1 ? last - prev : 500;
-    const newX = last + (step || 500);
-    onChange({ ...value, [String(newX)]: keys.length ? value[keys[keys.length - 1]] : 0 });
+
+  const pasteBlock = (r: number, c: number, block: string[][]) => {
+    const rows = pairs.map((p) => [...p] as [string, string]);
+    const startRow = r <= 0 ? 0 : r - 1;
+    const startCol = Math.min(1, Math.max(0, c));
+    block.forEach((brow, bi) => {
+      brow.forEach((val, bj) => {
+        const tc = startCol + bj;
+        if (tc > 1) return;
+        const tr = startRow + bi;
+        while (rows.length <= tr) {
+          const lastX = rows.length ? Number(rows[rows.length - 1][0]) : 0;
+          rows.push([String((Number.isFinite(lastX) ? lastX : 0) + 1), "0"]);
+        }
+        rows[tr][tc] = val;
+      });
+    });
+    onChange(rebuild(rows));
   };
-  const removeRow = (key: string) => {
-    if (keys.length <= 1) return;
-    const copy = { ...value };
-    delete copy[key];
-    onChange(copy);
+
+  const clearRange = (cells: { r: number; c: number }[]) => {
+    const rows = pairs.map((p) => [...p] as [string, string]);
+    for (const { r, c } of cells) {
+      if (r >= 1 && c === 1 && rows[r - 1]) rows[r - 1][1] = "0";
+    }
+    onChange(rebuild(rows));
   };
+
+  const addRow = () =>
+    onChange({
+      ...value,
+      [String(nextAxisKey(keys, 500))]: keys.length ? value[keys[keys.length - 1]] : 0,
+    });
+
+  const deleteRows = () => {
+    if (!selRange) return;
+    const r0 = Math.max(1, selRange.r0);
+    const rows = pairs.filter((_, i) => !(i + 1 >= r0 && i + 1 <= selRange.r1));
+    if (rows.length === 0) return;
+    onChange(rebuild(rows));
+  };
+
   return (
-    <div className="rounded border border-[color:var(--ss-border)]">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr>
-            <th className="ss-th">{axis.name} ({axis.unit})</th>
-            <th className="ss-th">{valueLabel} ({valueUnit})</th>
-            <th className="ss-th w-[26px]" />
-          </tr>
-        </thead>
-        <tbody>
-          {keys.map((k) => (
-            <tr key={k}>
-              <td className="ss-td">
-                <input
-                  type="number"
-                  step="any"
-                  className="ss-input w-full"
-                  defaultValue={k}
-                  onBlur={(e) => commitX(k, e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-                />
-              </td>
-              <td className="ss-td">
-                <input
-                  type="number"
-                  step="any"
-                  className="ss-input w-full"
-                  value={value[k]}
-                  onChange={(e) => commitY(k, e.target.value)}
-                />
-              </td>
-              <td className="ss-td text-center">
-                <button
-                  className="text-[color:var(--ss-text-dim)] hover:text-red-600 disabled:opacity-30"
-                  title="Remove row"
-                  disabled={keys.length <= 1}
-                  onClick={() => removeRow(k)}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <button
-        className="flex w-full items-center justify-center gap-1 py-1 text-[11px] text-[color:var(--ss-accent)] hover:bg-[color:var(--ss-accent-soft)]"
-        onClick={addRow}
-      >
-        <Plus size={12} /> Add row
-      </button>
+    <div className="flex flex-col gap-1">
+      <SpreadsheetGrid
+        matrix={matrix}
+        onCommit={commit}
+        onPasteBlock={pasteBlock}
+        onClearRange={clearRange}
+        onSelectionChange={setSelRange}
+      />
+      <div className="flex items-center gap-1">
+        <button className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px]" onClick={addRow}>
+          <Plus size={12} /> Add row
+        </button>
+        <button
+          className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px] disabled:opacity-30"
+          disabled={pairs.length <= 1}
+          onClick={deleteRows}
+          title="Delete the selected row(s)"
+        >
+          <Trash2 size={12} /> Delete row(s)
+        </button>
+      </div>
+      <p className="text-[10px] leading-tight text-[color:var(--ss-text-dim)]">{GRID_HINT}</p>
     </div>
   );
 }
 
-/** Editable 2D map {outer: {inner: y}} — sheet selector over the outer axis. */
+/**
+ * Excel-style editable 2D map {outer: {inner: y}} shown as a full matrix:
+ * columns are the outer axis (e.g. voltage sheets), rows the inner axis
+ * (e.g. speed), body cells the dependent value. Paste a whole block from Excel.
+ */
 function Table2DEditor({
   value,
   axes,
@@ -130,68 +166,224 @@ function Table2DEditor({
   valueUnit: string;
   onChange: (v: Table2D) => void;
 }) {
-  const sheetKeys = sortedNumericKeys(value);
-  const [selected, setSelected] = useState<string>(sheetKeys[0] ?? "");
-  const [newSheet, setNewSheet] = useState("");
-  const current = value[selected] ? selected : (sheetKeys[0] ?? "");
-  const addSheet = () => {
-    const n = Number(newSheet);
-    if (!Number.isFinite(n) || value[String(n)]) return;
-    const template = current ? { ...value[current] } : { "0": 0 };
-    onChange({ ...value, [String(n)]: template });
-    setSelected(String(n));
-    setNewSheet("");
+  const [selRange, setSelRange] = useState<GridRange | null>(null);
+  const outerKeys = sortedNumericKeys(value);
+  const innerSet = new Set<string>();
+  for (const ok of outerKeys) for (const ik of Object.keys(value[ok] ?? {})) innerSet.add(ik);
+  const innerKeys = [...innerSet].sort((a, b) => Number(a) - Number(b));
+
+  /** Current grid as strings: row 0 = ["", ...outer], each row = [inner, ...values]. */
+  const gridText = (): string[][] => {
+    const g: string[][] = [["", ...outerKeys]];
+    for (const ik of innerKeys) {
+      g.push([ik, ...outerKeys.map((ok) => {
+        const v = value[ok]?.[ik];
+        return v === undefined ? "" : String(v);
+      })]);
+    }
+    return g;
   };
-  const removeSheet = () => {
-    if (sheetKeys.length <= 1 || !current) return;
-    const copy = { ...value };
-    delete copy[current];
-    onChange(copy);
-    setSelected(sortedNumericKeys(copy)[0]);
+
+  const parseGrid = (g: string[][]): Table2D => {
+    const asKeys = (raw: string[]): number[] => {
+      let max = Math.max(0, ...raw.map((s) => Number(String(s).trim())).filter(Number.isFinite));
+      return raw.map((s) => {
+        const t = String(s).trim();
+        const n = Number(t);
+        if (t !== "" && Number.isFinite(n)) return n;
+        max += 1;
+        return max;
+      });
+    };
+    const outer = asKeys((g[0] ?? []).slice(1));
+    const inner = asKeys(g.slice(1).map((row) => row[0] ?? ""));
+    const result: Table2D = {};
+    outer.forEach((ok) => (result[String(ok)] ??= {}));
+    inner.forEach((ik, i) => {
+      outer.forEach((ok, j) => {
+        const cell = g[i + 1]?.[j + 1];
+        const t = cell === undefined ? "" : String(cell).trim();
+        if (t === "") return;
+        const v = Number(t);
+        if (Number.isFinite(v)) result[String(ok)][String(ik)] = v;
+      });
+    });
+    return result;
   };
-  if (!current) return null;
+
+  const corner: GridCell = { text: `${axes[1].name}\\${axes[0].name}`, kind: "corner", readOnly: true };
+  const matrix: GridCell[][] = [
+    [corner, ...outerKeys.map((k): GridCell => ({ text: k, kind: "colHeader" }))],
+    ...innerKeys.map((ik): GridCell[] => [
+      { text: ik, kind: "rowHeader" },
+      ...outerKeys.map((ok): GridCell => {
+        const v = value[ok]?.[ik];
+        return { text: v === undefined ? "" : String(v), kind: "body" };
+      }),
+    ]),
+  ];
+
+  const commit = (r: number, c: number, text: string) => {
+    if (r === 0 && c === 0) return;
+    const g = gridText();
+    g[r][c] = text;
+    onChange(parseGrid(g));
+  };
+
+  const pasteBlock = (r: number, c: number, block: string[][]) => {
+    const g = gridText();
+    const needRows = r + block.length;
+    const needCols = c + Math.max(...block.map((b) => b.length));
+    while (g.length < needRows) g.push([""]);
+    for (const row of g) while (row.length < needCols) row.push("");
+    block.forEach((brow, bi) => brow.forEach((val, bj) => {
+      if (r + bi === 0 && c + bj === 0) return; // don't overwrite the corner
+      g[r + bi][c + bj] = val;
+    }));
+    onChange(parseGrid(g));
+  };
+
+  const clearRange = (cells: { r: number; c: number }[]) => {
+    const g = gridText();
+    for (const { r, c } of cells) if (r >= 1 && c >= 1) g[r][c] = "";
+    onChange(parseGrid(g));
+  };
+
+  const addColumn = () => {
+    const nk = String(nextAxisKey(outerKeys, 50));
+    const col: Record<string, number> = {};
+    for (const ik of innerKeys) col[ik] = 0;
+    onChange({ ...value, [nk]: col });
+  };
+  const addRow = () => {
+    const nk = String(nextAxisKey(innerKeys, 500));
+    const next: Table2D = {};
+    for (const ok of outerKeys) next[ok] = { ...value[ok], [nk]: 0 };
+    onChange(next);
+  };
+  const deleteRows = () => {
+    if (!selRange) return;
+    const drop = new Set(
+      innerKeys.filter((_, i) => i + 1 >= Math.max(1, selRange.r0) && i + 1 <= selRange.r1),
+    );
+    if (drop.size === 0 || drop.size >= innerKeys.length) return;
+    const next: Table2D = {};
+    for (const ok of outerKeys) {
+      next[ok] = {};
+      for (const ik of Object.keys(value[ok] ?? {})) if (!drop.has(ik)) next[ok][ik] = value[ok][ik];
+    }
+    onChange(next);
+  };
+  const deleteCols = () => {
+    if (!selRange) return;
+    const keep = outerKeys.filter((_, j) => !(j + 1 >= Math.max(1, selRange.c0) && j + 1 <= selRange.c1));
+    if (keep.length === 0 || keep.length === outerKeys.length) return;
+    const next: Table2D = {};
+    for (const ok of keep) next[ok] = value[ok];
+    onChange(next);
+  };
+
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1 text-[11px]">
-        <span className="text-[color:var(--ss-text-dim)]">{axes[0].name} ({axes[0].unit})</span>
-        <select
-          className="ss-input w-[76px]"
-          value={current}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          {sheetKeys.map((k) => (
-            <option key={k} value={k}>{k}</option>
-          ))}
-        </select>
-        <input
-          type="number"
-          step="any"
-          className="ss-input w-[64px]"
-          placeholder="new…"
-          value={newSheet}
-          onChange={(e) => setNewSheet(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addSheet()}
-        />
-        <button className="ss-toolbtn" title={`Add ${axes[0].name} sheet`} onClick={addSheet}>
-          <Plus size={12} />
+      <div className="text-[10px] text-[color:var(--ss-text-dim)]">
+        Columns: {axes[0].name} ({axes[0].unit}) · Rows: {axes[1].name} ({axes[1].unit}) · Values:{" "}
+        {valueLabel} ({valueUnit})
+      </div>
+      <SpreadsheetGrid
+        matrix={matrix}
+        onCommit={commit}
+        onPasteBlock={pasteBlock}
+        onClearRange={clearRange}
+        onSelectionChange={setSelRange}
+      />
+      <div className="flex flex-wrap items-center gap-1">
+        <button className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px]" onClick={addColumn} title={`Add a ${axes[0].name} column`}>
+          <Columns3 size={12} /> Add {axes[0].name}
+        </button>
+        <button className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px]" onClick={addRow} title={`Add a ${axes[1].name} row`}>
+          <Rows3 size={12} /> Add {axes[1].name}
         </button>
         <button
-          className="ss-toolbtn disabled:opacity-30"
-          title="Remove this sheet"
-          disabled={sheetKeys.length <= 1}
-          onClick={removeSheet}
+          className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px] disabled:opacity-30"
+          disabled={outerKeys.length <= 1}
+          onClick={deleteCols}
+          title="Delete the selected column(s)"
         >
-          <Trash2 size={12} />
+          <Trash2 size={12} /> Col(s)
+        </button>
+        <button
+          className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px] disabled:opacity-30"
+          disabled={innerKeys.length <= 1}
+          onClick={deleteRows}
+          title="Delete the selected row(s)"
+        >
+          <Trash2 size={12} /> Row(s)
         </button>
       </div>
-      <Table1DEditor
-        value={value[current]}
-        axis={axes[1]}
-        valueLabel={valueLabel}
-        valueUnit={valueUnit}
-        onChange={(inner) => onChange({ ...value, [current]: inner })}
-      />
+      <p className="text-[10px] leading-tight text-[color:var(--ss-text-dim)]">{GRID_HINT}</p>
     </div>
+  );
+}
+
+// ---- driving-task / road profiles as a spreadsheet ---------------------------
+// The profile is stored as a "t:value; t:value; …" string (backend-parsed), but
+// it is really a 1-D lookup, so we edit it in the same Excel-style grid.
+
+function profileToTable(profile: string): Table1D {
+  const obj: Table1D = {};
+  for (const chunk of profile.replace(/\n/g, ";").split(";")) {
+    const c = chunk.trim();
+    if (!c) continue;
+    const [ts, vs] = c.split(c.includes(":") ? ":" : ",");
+    const t = Number(ts);
+    const v = Number(vs);
+    if (Number.isFinite(t) && Number.isFinite(v)) obj[String(t)] = v;
+  }
+  return obj;
+}
+
+function tableToProfile(table: Table1D): string {
+  return sortedNumericKeys(table)
+    .map((k) => `${k}:${table[k]}`)
+    .join("; ");
+}
+
+/** Axis labels for a profile param, derived from its component (and mode). */
+function profileAxes(
+  defId: string,
+  mode: string | undefined,
+): { x: AxisDef; yLabel: string; yUnit: string } {
+  if (defId === "signal.driving_task")
+    return { x: { name: "Time", unit: "s" }, yLabel: "Target Speed", yUnit: "km/h" };
+  if (defId === "signal.road_profile")
+    return {
+      x: mode === "time" ? { name: "Time", unit: "s" } : { name: "Distance", unit: "m" },
+      yLabel: "Grade",
+      yUnit: "%",
+    };
+  return { x: { name: "t", unit: "" }, yLabel: "Value", yUnit: "" };
+}
+
+function ProfileGridEditor({
+  value,
+  defId,
+  mode,
+  onChange,
+}: {
+  value: string;
+  defId: string;
+  mode: string | undefined;
+  onChange: (s: string) => void;
+}) {
+  const { x, yLabel, yUnit } = profileAxes(defId, mode);
+  return (
+    <Table1DEditor
+      value={profileToTable(value)}
+      axis={x}
+      valueLabel={yLabel}
+      valueUnit={yUnit}
+      onChange={(t) => onChange(tableToProfile(t))}
+    />
   );
 }
 
@@ -408,14 +600,14 @@ export function ElementForm({ element, def }: { element: ElementInstance; def: C
   const setActiveSystem = useProjectStore((s) => s.setActiveSystem);
   const running = useProjectStore((s) => s.running);
 
-  const scalarParams = useMemo(
-    () => def.parameters.filter((p) => p.type !== "table1d" && p.type !== "table2d" && p.type !== "code"),
-    [def],
-  );
-  const bigParams = useMemo(
-    () => def.parameters.filter((p) => p.type === "table1d" || p.type === "table2d" || p.type === "code"),
-    [def],
-  );
+  // profiles are stored as strings but edited as a full-width grid, so they
+  // join the tables/code in the "big" (full-width) group rather than the
+  // compact scalar table.
+  const isProfile = (p: ParameterDef) => p.type === "string" && p.key === "profile";
+  const isBig = (p: ParameterDef) =>
+    p.type === "table1d" || p.type === "table2d" || p.type === "code" || isProfile(p);
+  const scalarParams = useMemo(() => def.parameters.filter((p) => !isBig(p)), [def]);
+  const bigParams = useMemo(() => def.parameters.filter(isBig), [def]);
   const valueOf = (p: ParameterDef): ParamValue =>
     element.parameterOverrides[p.key] ?? p.default;
 
@@ -481,12 +673,20 @@ export function ElementForm({ element, def }: { element: ElementInstance; def: C
       {bigParams.map((p) => (
         <div key={p.key}>
           <div className="mb-1 text-[11px] font-semibold text-[color:var(--ss-text-dim)]">
-            {p.label} {p.type !== "code" ? `(${p.unit})` : ""}
-            {running && (
+            {isProfile(p) ? "Profile" : p.label}
+            {!isProfile(p) && p.type !== "code" ? ` (${p.unit})` : ""}
+            {running && !isProfile(p) && (
               <span className="ml-1 font-normal italic">— applies on next run</span>
             )}
           </div>
-          {p.type === "table1d" && p.axes?.length === 1 ? (
+          {isProfile(p) ? (
+            <ProfileGridEditor
+              value={String(valueOf(p))}
+              defId={def.id}
+              mode={String(element.parameterOverrides.mode ?? def.parameters.find((q) => q.key === "mode")?.default ?? "")}
+              onChange={(v) => setParameter(element.id, p.key, v)}
+            />
+          ) : p.type === "table1d" && p.axes?.length === 1 ? (
             <Table1DEditor
               value={valueOf(p) as Table1D}
               axis={p.axes[0]}

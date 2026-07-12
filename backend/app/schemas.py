@@ -24,6 +24,9 @@ class PortDef(BaseModel):
     kind: Literal["power", "signal", "mechanical", "electrical", "thermal", "fluid"]
     unitGroup: Optional[str] = None
     side: Optional[Literal["left", "right"]] = None  # canvas layout hint
+    # Electrical polarity: positive (supply/+) or negative (return/−).
+    # Neutral junctions (node, ground) leave this unset.
+    polarity: Optional[Literal["positive", "negative"]] = None
 
 
 class AxisDef(BaseModel):
@@ -104,9 +107,16 @@ class SimCase(BaseModel):
     id: str
     name: str
     duration: float = 600.0
-    timeStep: float = 1.0  # recording interval; the solver sub-steps internally
+    timeStep: float = 1.0  # solver step; signals/blocks evaluate here, mechanics sub-step internally
+    # record a data point every N solver steps (output decimation); 1 = every step
+    outputEvery: int = 1
     # 0 = run as fast as possible; N > 0 = pace at N× real time (for live tuning)
     realtimeFactor: float = 0.0
+    # Per-case parameter overrides: {elementId: {paramKey: value}}. Layered on
+    # top of each element's own parameterOverrides at model-build time, so a
+    # case can tweak values — and a parameter sweep can vary one — without
+    # editing the shared topology.
+    parameterOverrides: dict[str, dict[str, ParamValue]] = Field(default_factory=dict)
 
 
 class Project(BaseModel):

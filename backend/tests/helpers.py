@@ -67,8 +67,8 @@ def bev_axle(locked: bool = False, mu_left: float = 1.0,
         el("whr", "propulsion.wheel", "Wheel R"),
     ]
     connections = [
-        conn(1, "batt", "vs1", "hvbus", "t1"),
-        conn(2, "hvbus", "t3", "mot", "terminal"),
+        conn(1, "batt", "pos", "hvbus", "t1"),
+        conn(2, "hvbus", "t3", "mot", "pos"),
         conn(3, "mot", "shaft", "fd", "flange_in"),
         conn(4, "fd", "flange_out", "diff", "flange_in"),
         conn(5, "diff", "flange_out_a", "whl", "shaft"),

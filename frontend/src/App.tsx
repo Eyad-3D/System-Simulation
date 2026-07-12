@@ -3,18 +3,51 @@ import { DockLayout } from "./components/DockLayout";
 import { ParameterDialog } from "./components/ParameterDialog";
 import { Ribbon } from "./components/Ribbon";
 import { StatusBar } from "./components/StatusBar";
+import { ResultsPanel } from "./components/panels/ResultsPanel";
 import { useProjectStore } from "./store/projectStore";
+import { useUIStore } from "./store/uiStore";
+import { saveDraft } from "./persist";
 
 let initStarted = false;
 
 export default function App() {
   const loaded = useProjectStore((s) => s.loaded);
+  const ribbonTab = useUIStore((s) => s.ribbonTab);
+  const onResultsPage = ribbonTab === "results";
 
   useEffect(() => {
     if (!initStarted) {
       initStarted = true;
       void useProjectStore.getState().init();
     }
+  }, []);
+
+  // autosave the working project to localStorage (debounced) and flush on
+  // tab close, so unsaved work survives a refresh or crash. This is separate
+  // from Save (server); see persist.ts. A draft is only ever written once the
+  // user genuinely edits/switches the project — a pristine demo never creates
+  // one (so returning users aren't told they "restored a draft" they never made).
+  useEffect(() => {
+    let edited = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsub = useProjectStore.subscribe((state, prev) => {
+      // skip the initial null→project population (init / draft restore)
+      if (state.project && prev.project && state.project !== prev.project) {
+        edited = true;
+        clearTimeout(timer);
+        timer = setTimeout(() => saveDraft(state.project!), 800);
+      }
+    });
+    const flush = () => {
+      const p = useProjectStore.getState().project;
+      if (edited && p) saveDraft(p);
+    };
+    window.addEventListener("beforeunload", flush);
+    return () => {
+      unsub();
+      clearTimeout(timer);
+      window.removeEventListener("beforeunload", flush);
+    };
   }, []);
 
   useEffect(() => {
@@ -46,9 +79,24 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <Ribbon />
-      <div className="min-h-0 flex-1 p-1">
+      <div className="relative min-h-0 flex-1 p-1">
         {loaded ? (
-          <DockLayout />
+          <>
+            {/* Home / model workspace — kept mounted (hidden on the Results
+                page) so its dock layout and live state survive tab switches. */}
+            <div
+              className="absolute inset-1"
+              style={{ visibility: onResultsPage ? "hidden" : "visible" }}
+              aria-hidden={onResultsPage}
+            >
+              <DockLayout />
+            </div>
+            {onResultsPage && (
+              <div className="absolute inset-1 overflow-hidden rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)]">
+                <ResultsPanel />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full items-center justify-center text-[13px] text-[color:var(--ss-text-dim)]">
             Loading SimStudio…

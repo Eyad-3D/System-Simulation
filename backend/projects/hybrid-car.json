@@ -461,14 +461,14 @@
         {
           "id": "c-13",
           "sourceElementId": "el-battery",
-          "sourcePortId": "vs1",
+          "sourcePortId": "pos",
           "targetElementId": "el-hvbus",
           "targetPortId": "t1"
         },
         {
           "id": "c-14",
           "sourceElementId": "el-battery",
-          "sourcePortId": "vs2",
+          "sourcePortId": "neg",
           "targetElementId": "el-ground",
           "targetPortId": "t1"
         },
@@ -477,7 +477,14 @@
           "sourceElementId": "el-hvbus",
           "sourcePortId": "t2",
           "targetElementId": "el-motor",
-          "targetPortId": "terminal"
+          "targetPortId": "pos"
+        },
+        {
+          "id": "c-20",
+          "sourceElementId": "el-motor",
+          "sourcePortId": "neg",
+          "targetElementId": "el-ground",
+          "targetPortId": "t2"
         },
         {
           "id": "c-16",

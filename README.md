@@ -22,9 +22,11 @@ desktop-grade, dockable-panel UI.
 | **Scripting** | Script (Function) component: user-written Python `step(t, dt, inputs, state, params)` with named per-instance ports — for hybrid control strategies, custom recuperation logic, signal math |
 | **Maps** | E-Motor with voltage-dependent full-load torque map, power-loss map, drag torque; battery OCV(SOC) table — all edited in table grids in the Properties panel |
 | **Data Checks** | Pre-run validation: reference integrity, port-kind mismatches, parameter ranges, table data, script compilation, driveline solvability (delegated to the solver's model extraction) |
-| **Results** | Channel picker (grouped per element), multi-channel time-series chart that fills in live during the run, summary table (SOC, energy, recuperation, distance, consumption), CSV export |
+| **Results** | Dedicated full-page Results workspace (own ribbon tab): channel picker grouped per element, multi-channel time-series **chart or table view** that fills in live during the run, summary table (SOC, energy, recuperation, distance, consumption), CSV export |
+| **Electrical** | Two-terminal components: every electrical element has explicit positive (+, red) and negative (−, blue) pins; the solver balances power on the supply rail with the negative terminals as the return (wire to Ground, or leave implicit) |
+| **Canvas** | Signal/data-bus wiring lives only in the Data Bus panel (not drawn on canvas); background-grid toggle; double-click an element for a modal parameter dialog; Shift+click a pin to move it around the node |
 | **Persistence** | Save/load projects on the backend (single JSON file per project), plus browser Export / Import |
-| **UI shell** | Ribbon (Project / Home / Simulations / Results + visual stubs), dockable & resizable panels (Dockview), status bar with live progress |
+| **UI shell** | Ribbon tabs act as full-page workspaces (Home = topology + panels; Results = its own page); light/dark theme (persisted); dockable & resizable panels (Dockview); status bar with live progress |
 
 ![Results view](docs/doc-results.png)
 ![Data bus connections](docs/doc-databus.png)

@@ -13,8 +13,8 @@ import { MessagesPanel } from "./panels/MessagesPanel";
 import { DataChecksPanel } from "./panels/DataChecksPanel";
 import { LayerConfigPanel } from "./panels/LayerConfigPanel";
 import { DataBusPanel } from "./panels/DataBusPanel";
-import { ResultsPanel } from "./panels/ResultsPanel";
 import { MonitorsPanel } from "./panels/MonitorsPanel";
+import { CasePanel } from "./panels/CasePanel";
 import { TopologyCanvas } from "./canvas/TopologyCanvas";
 
 const ssTheme: DockviewTheme = {
@@ -32,23 +32,27 @@ const wrap =
     </div>
   );
 
+// Results has its own full-page workspace (Results ribbon tab), so it is not
+// registered as a dock panel here.
 const components = {
   components: wrap(ComponentsPanel),
   elements: wrap(ElementsPanel),
   topology: wrap(TopologyCanvas),
-  results: wrap(ResultsPanel),
   monitors: wrap(MonitorsPanel),
   properties: wrap(PropertiesPanel),
   messages: wrap(MessagesPanel),
   "data-checks": wrap(DataChecksPanel),
   "layer-config": wrap(LayerConfigPanel),
   "data-bus": wrap(DataBusPanel),
+  cases: wrap(CasePanel),
 };
 
-function onReady(event: DockviewReadyEvent) {
-  const api = event.api;
-  useUIStore.getState().setDockApi(api);
+// bump when the panel set / default arrangement changes so stale saved layouts
+// are discarded rather than restored into a broken state.
+const LAYOUT_KEY = "simstudio-layout-v1";
+const LAYOUT_VERSION = 2;
 
+function buildDefaultLayout(api: DockviewReadyEvent["api"]) {
   const componentsPanel = api.addPanel({
     id: "components",
     component: "components",
@@ -67,12 +71,6 @@ function onReady(event: DockviewReadyEvent) {
     position: { referencePanel: "components", direction: "right" },
   });
   api.addPanel({
-    id: "results",
-    component: "results",
-    title: "Results",
-    position: { referencePanel: "topology", direction: "within" },
-  });
-  api.addPanel({
     id: "monitors",
     component: "monitors",
     title: "Monitors",
@@ -83,6 +81,12 @@ function onReady(event: DockviewReadyEvent) {
     component: "properties",
     title: "Properties",
     position: { referencePanel: "topology", direction: "right" },
+  });
+  api.addPanel({
+    id: "cases",
+    component: "cases",
+    title: "Cases & Parameters",
+    position: { referencePanel: "properties", direction: "within" },
   });
   const messagesPanel = api.addPanel({
     id: "messages",
@@ -116,6 +120,63 @@ function onReady(event: DockviewReadyEvent) {
   api.getPanel("components")?.api.setActive();
   api.getPanel("messages")?.api.setActive();
   api.getPanel("topology")?.api.setActive();
+  // Properties is the default tab in the right group (Cases sits behind it)
+  api.getPanel("properties")?.api.setActive();
+}
+
+/** Reset the workspace to the default panel arrangement. */
+export function resetDockLayout() {
+  try {
+    window.localStorage.removeItem(LAYOUT_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  window.location.reload();
+}
+
+function onReady(event: DockviewReadyEvent) {
+  const api = event.api;
+  useUIStore.getState().setDockApi(api);
+
+  // restore the user's saved arrangement; fall back to the default on any
+  // failure (missing/renamed panels, corrupt data, or a version bump).
+  let restored = false;
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as { version?: number; layout?: unknown };
+      if (saved.version === LAYOUT_VERSION && saved.layout) {
+        api.fromJSON(saved.layout as Parameters<typeof api.fromJSON>[0]);
+        restored = api.panels.length > 0;
+      }
+    }
+  } catch {
+    restored = false;
+  }
+  if (!restored) {
+    try {
+      api.clear();
+    } catch {
+      /* nothing to clear */
+    }
+    buildDefaultLayout(api);
+  }
+
+  // persist rearrangements (debounced) so the workspace survives reloads
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  api.onDidLayoutChange(() => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          LAYOUT_KEY,
+          JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON() }),
+        );
+      } catch {
+        /* storage unavailable / quota */
+      }
+    }, 500);
+  });
 }
 
 export function DockLayout() {

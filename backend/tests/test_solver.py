@@ -60,6 +60,87 @@ def test_profile_parsing():
     assert interp_profile(pts, 999, False) == 95.0
 
 
+# ---- recording controls (outputEvery + smaller step) -------------------------
+
+def _bev_30s(**case_over):
+    proj = bev_axle(profile="0:0; 5:60; 30:60")
+    proj.cases[0].duration = 30
+    proj.cases[0].timeStep = 0.5
+    for k, v in case_over.items():
+        setattr(proj.cases[0], k, v)
+    return proj
+
+
+def test_output_every_decimates_but_preserves_physics():
+    full = simulate(_bev_30s(), "case")
+    dec = simulate(_bev_30s(outputEvery=5), "case")
+
+    n_full = len(series(full, "veh", "sig_speed"))
+    n_dec = len(series(dec, "veh", "sig_speed"))
+    assert n_dec == pytest.approx(n_full / 5, abs=2)  # ~1/5 the points
+    # every channel is sampled on the same recorded grid
+    assert all(len(c.timeSeries) == n_dec for c in dec.channels)
+    # the final step is always kept
+    assert series(dec, "veh", "sig_speed")[-1]["t"] == pytest.approx(30.0, abs=0.5)
+    # decimation changes only the sampling, not the solve
+    assert series(full, "veh", "sig_speed")[-1]["value"] == pytest.approx(
+        series(dec, "veh", "sig_speed")[-1]["value"], abs=0.5)
+
+
+def test_step_size_below_old_floor_allowed():
+    proj = bev_axle(profile="0:0; 2:40; 5:40")
+    proj.cases[0].duration = 5
+    proj.cases[0].timeStep = 0.005  # finer than the previous 0.01 floor
+    result = simulate(proj, "case")
+    assert result.status in ("success", "warning"), [m.text for m in result.messages]
+    # 5 s / 0.005 ≈ 1000 recorded points
+    assert len(series(result, "veh", "sig_speed")) > 500
+
+
+# ---- per-case parameter overrides (Phase 4) ---------------------------------
+
+def _bev_case(mass=None):
+    proj = bev_axle(profile="0:0; 5:60; 30:60")
+    proj.cases[0].duration = 30
+    if mass is not None:
+        proj.cases[0].parameterOverrides = {"veh": {"mass_kg": mass}}
+    return proj
+
+
+def test_case_override_changes_result_non_destructively():
+    """A case-level override layers on top of the element's own overrides:
+    a heavier vehicle (same driving task) drains more energy — and the base
+    element parameters are left untouched, so the override is non-destructive."""
+    base = _bev_case()
+    heavy = _bev_case(mass=3200)
+
+    base_res = simulate(base, "case")
+    heavy_res = simulate(heavy, "case")
+    assert base_res.status in ("success", "warning"), [m.text for m in base_res.messages]
+    assert heavy_res.status in ("success", "warning"), [m.text for m in heavy_res.messages]
+
+    base_soc = series(base_res, "batt", "sig_soc")[-1]["value"]
+    heavy_soc = series(heavy_res, "batt", "sig_soc")[-1]["value"]
+    assert heavy_soc < base_soc - 0.05  # measurably more drain
+
+    # overriding is non-destructive: the base vehicle element still has no
+    # parameterOverrides of its own, and an empty case map is a no-op.
+    assert heavy.systems[0].elements[0].parameterOverrides == {}
+    heavy.cases[0].parameterOverrides = {}
+    reset_soc = series(simulate(heavy, "case"), "batt", "sig_soc")[-1]["value"]
+    assert reset_soc == pytest.approx(base_soc, abs=1e-6)
+
+
+def test_case_override_sweep_is_monotonic():
+    """The mechanism a parameter sweep rides on: stepping one overridden value
+    yields ordered results (heavier ⇒ lower final SOC)."""
+    socs = [
+        series(simulate(_bev_case(mass=m), "case"), "batt", "sig_soc")[-1]["value"]
+        for m in (1500, 2500, 3500)
+    ]
+    assert socs[0] > socs[1] > socs[2]
+
+
 # ---- vehicle dynamics --------------------------------------------------------
 
 def test_speed_tracking_and_regen():

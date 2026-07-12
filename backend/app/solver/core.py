@@ -386,8 +386,9 @@ def simulate(
             messages=[SimMessage(level="error", text=f"Simulation case '{case_id}' not found.")],
         )
     gear_of: dict[str, float] = {}
+    case_overrides = getattr(case, "parameterOverrides", None) or {}
     try:
-        model = build_model(project, gear_of)
+        model = build_model(project, gear_of, case_overrides)
     except ModelError as e:
         return SimResult(
             caseId=case_id, status="failed", channels=[],
@@ -398,10 +399,11 @@ def simulate(
     for w in model.warnings:
         rt.message("warning", w)
 
-    dt_rec = max(0.01, case.timeStep)
+    dt_rec = max(1e-4, case.timeStep)
     steps = max(1, int(round(case.duration / dt_rec)))
     n_sub = max(1, int(math.ceil(dt_rec / MAX_SUBSTEP)))
     dt = dt_rec / n_sub
+    output_every = max(1, int(getattr(case, "outputEvery", 1) or 1))
     pace = max(0.0, float(getattr(case, "realtimeFactor", 0.0) or 0.0))
 
     def params(el_id: str) -> dict:
@@ -833,7 +835,7 @@ def simulate(
             if changed:
                 # ratios are baked into segment reflections — re-extract them
                 try:
-                    new_model = build_model(project, gear_of)
+                    new_model = build_model(project, gear_of, case_overrides)
                 except ModelError:
                     new_model = None
                 if new_model is not None:
@@ -1202,14 +1204,22 @@ def simulate(
                                      "An electrical bus has load but no source — demand is unmet.")
                     bus_voltage[bus.id] = 0.0
 
-        # -- record ------------------------------------------------------------
-        times.append(t)
+        # -- record / publish --------------------------------------------------
+        # Always publish (so signal routing stays fresh for the next step); only
+        # append to the series on recorded steps, so "store every N steps"
+        # decimates the stored/streamed output. The last step is always kept.
+        do_record = (step % output_every == 0) or (step == steps)
+        if do_record:
+            times.append(t)
+        rec_index = len(times) - 1
         rec = rt.series
 
         def record(el_id: str, port_id: str, value: float) -> None:
             rt.publish(el_id, port_id, value)
+            if not do_record:
+                return
             lst = rec[(el_id, port_id)]
-            while len(lst) < step:
+            while len(lst) < rec_index:
                 lst.append(0.0)
             lst.append(value)
 
@@ -1323,13 +1333,13 @@ def simulate(
                     record(pr.el_id, "sig_shaft_power",
                            abs(pr.t_ref * (rpm_p / pr.n_ref) ** 2 * omega_p) / 1000.0)
 
-        if emit:
+        if emit and do_record:
             emit({
                 "type": "step",
                 "t": t,
                 "pct": round(100.0 * step / steps, 1),
                 "values": {f"{el}:{port}": round(val[-1], 5)
-                           for (el, port), val in rec.items() if len(val) == step + 1},
+                           for (el, port), val in rec.items() if len(val) == rec_index + 1},
             })
 
         if pace > 0 and step < steps:
@@ -1407,10 +1417,12 @@ def simulate(
     has_error = any(m.level == "error" for m in rt.messages)
     has_warning = any(m.level == "warning" for m in rt.messages) or cancelled
     status = "failed" if has_error else ("warning" if has_warning else "success")
+    rec_note = f", stored every {output_every}" if output_every > 1 else ""
     rt.messages.insert(0, SimMessage(
         level="info",
-        text=f"Case '{case.name}' solved: {len(times) - 1} steps × {dt_rec:g} s "
-             f"({n_sub} sub-steps each), {len(channels)} result channels.",
+        text=f"Case '{case.name}' solved: {steps} steps × {dt_rec:g} s "
+             f"({n_sub} sub-steps each), {len(times)} points recorded{rec_note}, "
+             f"{len(channels)} result channels.",
     ))
     return SimResult(
         caseId=case_id,

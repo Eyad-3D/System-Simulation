@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Gauge } from "lucide-react";
-import { useProjectStore } from "../../store/projectStore";
+import { useActiveRun, useProjectStore } from "../../store/projectStore";
 import type { Channel } from "../../types";
 
 /** Tiny inline sparkline over a channel's recent history. */
@@ -57,11 +57,9 @@ export function MonitorsPanel() {
   const libraryById = useProjectStore((s) => s.libraryById);
   const liveValues = useProjectStore((s) => s.liveValues);
   const running = useProjectStore((s) => s.running);
-  const results = useProjectStore((s) => s.results);
-  const activeResultCaseId = useProjectStore((s) => s.activeResultCaseId);
   const select = useProjectStore((s) => s.select);
 
-  const result = activeResultCaseId ? results[activeResultCaseId] : undefined;
+  const result = useActiveRun()?.result;
 
   const monitors = useMemo(() => {
     if (!project) return [];

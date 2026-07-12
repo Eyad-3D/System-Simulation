@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
+  Copy,
   Download,
   FilePlus2,
   FolderOpen,
@@ -12,8 +13,10 @@ import {
   Play,
   Plus,
   Redo2,
+  RotateCcw,
   Save,
   Settings2,
+  Sliders,
   Square,
   Sun,
   Trash2,
@@ -21,16 +24,19 @@ import {
   Upload,
 } from "lucide-react";
 import * as api from "../api";
+import { resetDockLayout } from "./DockLayout";
 import { useProjectStore } from "../store/projectStore";
 import { useUIStore, type RibbonTab } from "../store/uiStore";
 
+// Optimization is not implemented yet — kept out of the ribbon (its RibbonTab
+// id/stub render remain) until it ships as a real feature. Parameters is real
+// (per-case overrides + sweeps, driven from the Cases & Parameters panel).
 const TABS: { id: RibbonTab; label: string }[] = [
   { id: "project", label: "Project" },
   { id: "home", label: "Home" },
   { id: "simulations", label: "Simulations" },
-  { id: "results", label: "Results" },
-  { id: "optimization", label: "Optimization" },
   { id: "parameters", label: "Parameters" },
+  { id: "results", label: "Results" },
 ];
 
 function RibbonGroup({ label, children }: { label: string; children: React.ReactNode }) {
@@ -166,7 +172,7 @@ function HomeTab() {
           disabled={!store.selectedElementId}
         />
       </RibbonGroup>
-      <RibbonGroup label="Properties">
+      <RibbonGroup label="Workspace">
         <BigButton
           icon={Settings2}
           label="Properties"
@@ -176,6 +182,12 @@ function HomeTab() {
           icon={LayoutGrid}
           label="Topology"
           onClick={() => useUIStore.getState().focusPanel("topology")}
+        />
+        <BigButton
+          icon={RotateCcw}
+          label="Reset UI"
+          title="Reset the panel layout to default"
+          onClick={resetDockLayout}
         />
       </RibbonGroup>
     </>
@@ -192,7 +204,7 @@ function SimulationsTab() {
         <div className="flex flex-col justify-center gap-1 py-1">
           <div className="flex items-center gap-1">
             <select
-              className="ss-input w-[180px]"
+              className="ss-input w-[150px]"
               value={store.activeCaseId ?? ""}
               onChange={(e) => store.setActiveCase(e.target.value)}
             >
@@ -204,6 +216,22 @@ function SimulationsTab() {
             </select>
             <button className="ss-toolbtn" title="Add case" onClick={store.addCase}>
               <Plus size={14} />
+            </button>
+            <button
+              className="ss-toolbtn"
+              title="Duplicate this case"
+              disabled={!store.activeCaseId}
+              onClick={() => store.activeCaseId && store.duplicateCase(store.activeCaseId)}
+            >
+              <Copy size={14} />
+            </button>
+            <button
+              className="ss-toolbtn"
+              title="Delete this case"
+              disabled={cases.length <= 1 || !store.activeCaseId}
+              onClick={() => store.activeCaseId && store.removeCase(store.activeCaseId)}
+            >
+              <Trash2 size={14} />
             </button>
           </div>
           <div className="flex items-center gap-1 text-[11px] text-[color:var(--ss-text-dim)]">
@@ -218,18 +246,38 @@ function SimulationsTab() {
               }
             />
             <span>s</span>
-            <span className="ml-2">Step</span>
+            <span className="ml-2" title="Solver step: signals and control blocks evaluate at this interval; mechanics sub-step to ≤10 ms internally.">Step</span>
             <input
               type="number"
-              className="ss-input w-[56px]"
+              className="ss-input w-[64px]"
+              title="Solver step in seconds (min 0.0001). Smaller = finer, more compute."
               value={activeCase?.timeStep ?? 1}
-              step={0.1}
-              min={0.01}
+              step="any"
+              min={0.0001}
               onChange={(e) =>
-                activeCase && store.setCaseField(activeCase.id, { timeStep: Number(e.target.value) || 1 })
+                activeCase &&
+                store.setCaseField(activeCase.id, {
+                  timeStep: Math.max(0.0001, Number(e.target.value) || 1),
+                })
               }
             />
             <span>s</span>
+            <span className="ml-2" title="Store a data point every N solver steps. Output interval = Step × this. Use to keep results small at fine step sizes.">Store every</span>
+            <input
+              type="number"
+              className="ss-input w-[52px]"
+              title="Record a result point every N solver steps (1 = every step)."
+              value={activeCase?.outputEvery ?? 1}
+              step={1}
+              min={1}
+              onChange={(e) =>
+                activeCase &&
+                store.setCaseField(activeCase.id, {
+                  outputEvery: Math.max(1, Math.round(Number(e.target.value) || 1)),
+                })
+              }
+            />
+            <span>steps</span>
             <span className="ml-2">Pacing</span>
             <select
               className="ss-input w-[90px]"
@@ -277,19 +325,95 @@ function SimulationsTab() {
 }
 
 function ResultsTab() {
-  const results = useProjectStore((s) => s.results);
-  const count = Object.keys(results).length;
+  const running = useProjectStore((s) => s.running);
+  const run = useProjectStore((s) => s.run);
+  const stopRun = useProjectStore((s) => s.stopRun);
+  const project = useProjectStore((s) => s.project);
+  const clearRuns = useProjectStore((s) => s.clearRuns);
+  const count = useProjectStore((s) => s.runs.length);
   return (
     <>
-      <RibbonGroup label="Results">
+      <RibbonGroup label="Simulation">
         <BigButton
-          icon={Gauge}
-          label="Results"
-          onClick={() => useUIStore.getState().focusPanel("results")}
+          icon={Play}
+          label={running ? "Running…" : "Run"}
+          accent
+          disabled={running || !project}
+          onClick={() => void run()}
         />
-        <div className="flex h-full flex-col justify-center px-2 text-[11px] text-[color:var(--ss-text-dim)]">
-          {count === 0 ? "No stored runs yet" : `${count} stored run${count > 1 ? "s" : ""}`}
+        <BigButton icon={Square} label="Stop" disabled={!running} onClick={stopRun} />
+      </RibbonGroup>
+      <RibbonGroup label="Results">
+        <div className="flex h-full flex-col justify-center gap-1 px-2 text-[11px] text-[color:var(--ss-text-dim)]">
+          <span className="flex items-center gap-1">
+            <Gauge size={13} />
+            {count === 0 ? "No stored runs yet" : `${count} stored run${count > 1 ? "s" : ""}`}
+            {count >= 20 && <span className="text-[10px]">(max)</span>}
+          </span>
+          <button
+            className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px] disabled:opacity-40"
+            disabled={count === 0 || running}
+            onClick={() => {
+              if (window.confirm("Clear all stored runs from the results history?")) clearRuns();
+            }}
+          >
+            <Trash2 size={12} /> Clear history
+          </button>
         </div>
+      </RibbonGroup>
+    </>
+  );
+}
+
+function ParametersTab() {
+  const running = useProjectStore((s) => s.running);
+  const run = useProjectStore((s) => s.run);
+  const stopRun = useProjectStore((s) => s.stopRun);
+  const project = useProjectStore((s) => s.project);
+  const cases = useProjectStore((s) => s.project?.cases ?? []);
+  const activeCaseId = useProjectStore((s) => s.activeCaseId);
+  const setActiveCase = useProjectStore((s) => s.setActiveCase);
+  const activeCase = cases.find((c) => c.id === activeCaseId);
+  const overrideCount = activeCase?.parameterOverrides
+    ? Object.values(activeCase.parameterOverrides).reduce((n, m) => n + Object.keys(m).length, 0)
+    : 0;
+  return (
+    <>
+      <RibbonGroup label="Case">
+        <div className="flex flex-col justify-center gap-1 px-1 py-1">
+          <select
+            className="ss-input w-[160px]"
+            value={activeCaseId ?? ""}
+            onChange={(e) => setActiveCase(e.target.value)}
+          >
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-[color:var(--ss-text-dim)]">
+            {overrideCount === 0
+              ? "No overrides — base parameters"
+              : `${overrideCount} override${overrideCount > 1 ? "s" : ""} active`}
+          </span>
+        </div>
+      </RibbonGroup>
+      <RibbonGroup label="Parameter Studies">
+        <BigButton
+          icon={Sliders}
+          label="Case Setup"
+          title="Open the Cases & Parameters panel: per-case overrides and sweeps"
+          onClick={() => useUIStore.getState().focusPanel("cases")}
+        />
+        <BigButton
+          icon={Play}
+          label={running ? "Running…" : "Run case"}
+          accent
+          disabled={running || !project}
+          onClick={() => void run()}
+        />
+        <BigButton icon={Square} label="Stop" disabled={!running} onClick={stopRun} />
       </RibbonGroup>
     </>
   );
@@ -369,9 +493,9 @@ export function Ribbon() {
         {tab === "home" && <HomeTab />}
         {tab === "simulations" && <SimulationsTab />}
         {tab === "results" && <ResultsTab />}
+        {tab === "parameters" && <ParametersTab />}
         {tab === "project" && <ProjectTab />}
         {tab === "optimization" && <StubTab name="Optimization" />}
-        {tab === "parameters" && <StubTab name="Parameter studies" />}
       </div>
     </div>
   );

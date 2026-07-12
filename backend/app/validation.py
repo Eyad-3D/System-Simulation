@@ -171,6 +171,14 @@ def validate_project(project: Project) -> list[DataCheck]:
         for text in model.warnings:
             add("warning", text)
 
+        for el_id in model.floating_returns:
+            el = all_elements.get(el_id)
+            if el is not None:
+                add("info",
+                    f"'{el.label}' has an unconnected negative (−) terminal — using an "
+                    f"implicit ground return. Wire it to Ground for an explicit return path.",
+                    el)
+
         # wiring conventions
         for el_id, cdef in model.cdef_of.items():
             el = all_elements[el_id]

@@ -1,15 +1,20 @@
 import { create } from "zustand";
 import * as api from "../api";
+import { loadDraft } from "../persist";
 import type {
   Channel,
   ComponentDef,
+  Connection,
+  DataBusConnection,
   DataCheck,
+  ElementInstance,
   LogMessage,
   ParamValue,
   PortDef,
   PortSide,
   Project,
   SimResult,
+  SimRun,
   SystemNode,
 } from "../types";
 import { useUIStore } from "./uiStore";
@@ -22,8 +27,123 @@ function now(): string {
   return new Date().toLocaleTimeString([], { hour12: false });
 }
 
+/** A snapshot of elements + the wiring wholly contained within them. */
+interface ClipboardData {
+  elements: ElementInstance[];
+  connections: Connection[];
+  dataBus: DataBusConnection[];
+}
+
+/** Snapshot the given element ids of a system plus the connections and
+ *  data-bus wires whose *both* endpoints are in the selection. */
+function collectSelection(project: Project, systemId: string, ids: string[]): ClipboardData {
+  const sys = project.systems.find((s) => s.id === systemId);
+  if (!sys) return { elements: [], connections: [], dataBus: [] };
+  const idSet = new Set(ids);
+  return {
+    elements: sys.elements.filter((e) => idSet.has(e.id)).map((e) => structuredClone(e)),
+    connections: sys.connections
+      .filter((c) => idSet.has(c.sourceElementId) && idSet.has(c.targetElementId))
+      .map((c) => structuredClone(c)),
+    dataBus: project.dataBusConnections
+      .filter((d) => idSet.has(d.element1Id) && idSet.has(d.element2Id))
+      .map((d) => structuredClone(d)),
+  };
+}
+
+/** Deep-clone a sub-system tree under `newParentId`, returning the new system id. */
+function cloneSubsystemTree(draft: Project, srcSysId: string, newParentId: string): string {
+  const src = draft.systems.find((s) => s.id === srcSysId);
+  const newSysId = uid("sys");
+  const newSys: SystemNode = {
+    id: newSysId,
+    name: src?.name ?? "System",
+    parentId: newParentId,
+    elements: [],
+    connections: [],
+  };
+  draft.systems.push(newSys);
+  if (!src) return newSysId;
+  const idMap = new Map<string, string>();
+  for (const el of src.elements) {
+    const nid = uid("el");
+    idMap.set(el.id, nid);
+    const clone = structuredClone(el);
+    clone.id = nid;
+    if (clone.isSubSystem && clone.subSystemId) {
+      clone.subSystemId = cloneSubsystemTree(draft, el.subSystemId!, newSysId);
+    }
+    newSys.elements.push(clone);
+  }
+  for (const c of src.connections) {
+    const a = idMap.get(c.sourceElementId);
+    const b = idMap.get(c.targetElementId);
+    if (a && b)
+      newSys.connections.push({ id: uid("c"), sourceElementId: a, sourcePortId: c.sourcePortId, targetElementId: b, targetPortId: c.targetPortId });
+  }
+  const srcIds = new Set(src.elements.map((e) => e.id));
+  for (const d of [...draft.dataBusConnections]) {
+    if (srcIds.has(d.element1Id) && srcIds.has(d.element2Id)) {
+      const a = idMap.get(d.element1Id);
+      const b = idMap.get(d.element2Id);
+      if (a && b)
+        draft.dataBusConnections.push({ id: uid("dbc"), element1Id: a, port1Id: d.port1Id, element2Id: b, port2Id: d.port2Id });
+    }
+  }
+  return newSysId;
+}
+
+/** Clone a clipboard/selection into `targetSystemId` at an offset, remapping
+ *  the internal wiring and deep-cloning any container sub-systems. Returns the
+ *  new element ids (in source order). */
+function cloneElementsInto(
+  draft: Project,
+  targetSystemId: string,
+  data: ClipboardData,
+  offset: { x: number; y: number },
+): string[] {
+  const system = draft.systems.find((s) => s.id === targetSystemId);
+  if (!system) return [];
+  const idMap = new Map<string, string>();
+  const newIds: string[] = [];
+  for (const el of data.elements) {
+    const nid = uid("el");
+    idMap.set(el.id, nid);
+    newIds.push(nid);
+    const clone = structuredClone(el);
+    clone.id = nid;
+    clone.position = { x: el.position.x + offset.x, y: el.position.y + offset.y };
+    if (clone.isSubSystem && clone.subSystemId) {
+      clone.subSystemId = cloneSubsystemTree(draft, el.subSystemId!, targetSystemId);
+    }
+    system.elements.push(clone);
+  }
+  for (const c of data.connections) {
+    const a = idMap.get(c.sourceElementId);
+    const b = idMap.get(c.targetElementId);
+    if (a && b)
+      system.connections.push({ id: uid("c"), sourceElementId: a, sourcePortId: c.sourcePortId, targetElementId: b, targetPortId: c.targetPortId });
+  }
+  for (const d of data.dataBus) {
+    const a = idMap.get(d.element1Id);
+    const b = idMap.get(d.element2Id);
+    if (a && b)
+      draft.dataBusConnections.push({ id: uid("dbc"), element1Id: a, port1Id: d.port1Id, element2Id: b, port2Id: d.port2Id });
+  }
+  return newIds;
+}
+
 const HISTORY_LIMIT = 50;
 const LIVE_FLUSH_MS = 120;
+const MAX_RUNS = 20; // rolling result-history depth (client-side only; holds a full sweep family)
+
+/** A parameter sweep: run `caseId` once per value, overriding one element param. */
+export interface SweepConfig {
+  caseId: string;
+  elementId: string;
+  paramKey: string;
+  values: number[];
+}
 
 // mirrors the solver's unitGroup → display-unit mapping
 const UNIT_BY_GROUP: Record<string, string> = {
@@ -61,6 +181,8 @@ function channelMetaResolver(project: Project, libraryById: Record<string, Compo
 
 // handle for the in-flight live run (not in reactive state on purpose)
 let activeRun: api.LiveRunHandle | null = null;
+// set by stopRun so an in-flight parameter sweep aborts after the current point
+let sweepAborted = false;
 
 interface ProjectState {
   library: ComponentDef[];
@@ -73,14 +195,22 @@ interface ProjectState {
   selectedElementId: string | null;
   dirty: boolean;
 
+  /** in-memory element clipboard (copy/paste); not persisted or in undo history */
+  clipboard: ClipboardData | null;
+  /** ids the canvas should select next render (e.g. freshly pasted elements) */
+  pendingCanvasSelection: string[] | null;
+
   past: Project[];
   future: Project[];
 
   messages: LogMessage[];
   dataChecks: DataCheck[] | null;
-  results: Record<string, SimResult>;
+  /** rolling history of simulation runs (newest first, capped at MAX_RUNS) */
+  runs: SimRun[];
   activeCaseId: string | null;
-  activeResultCaseId: string | null;
+  /** run shown in Results; second (optional) run overlaid for comparison */
+  activeRunId: string | null;
+  compareRunId: string | null;
   running: boolean;
   checking: boolean;
   /** latest values per "elementId:portId" while (and after) a live run */
@@ -100,12 +230,23 @@ interface ProjectState {
   // topology editing
   addElement: (defId: string, position: { x: number; y: number }) => void;
   moveElement: (id: string, position: { x: number; y: number }) => void;
+  resizeElement: (id: string, size: { width: number; height: number }) => void;
   beginHistory: () => void;
   removeElements: (ids: string[]) => void;
+  copyElements: (ids: string[]) => void;
+  duplicateElements: (ids: string[]) => void;
+  pasteClipboard: (position?: { x: number; y: number }) => void;
+  clearPendingSelection: () => void;
   renameElement: (id: string, label: string) => void;
   setParameter: (elementId: string, key: string, value: ParamValue) => void;
   setDynamicPorts: (elementId: string, ports: PortDef[]) => void;
   setPortSide: (elementId: string, portId: string, side: PortSide) => void;
+  setPortPlacement: (
+    elementId: string,
+    portId: string,
+    side: PortSide,
+    offset: number,
+  ) => void;
   addConnection: (
     sourceElementId: string,
     sourcePortId: string,
@@ -131,13 +272,32 @@ interface ProjectState {
   setActiveCase: (id: string) => void;
   setCaseField: (
     caseId: string,
-    patch: Partial<{ name: string; duration: number; timeStep: number; realtimeFactor: number }>,
+    patch: Partial<{
+      name: string;
+      duration: number;
+      timeStep: number;
+      outputEvery: number;
+      realtimeFactor: number;
+    }>,
   ) => void;
   addCase: () => void;
+  duplicateCase: (id: string) => void;
+  removeCase: (id: string) => void;
+  /** Set a per-case parameter override (elementId.key = value for this case only). */
+  setCaseOverride: (caseId: string, elementId: string, key: string, value: ParamValue) => void;
+  /** Remove a per-case parameter override; prunes the element entry when empty. */
+  clearCaseOverride: (caseId: string, elementId: string, key: string) => void;
   runDataChecks: () => Promise<DataCheck[]>;
+  /** Error-level data-check gate; resolves true when a run/sweep may proceed. */
+  passesRunGate: () => Promise<boolean>;
   run: () => Promise<void>;
+  /** Sequentially run a case once per swept value, each landing in run history. */
+  runSweep: (config: SweepConfig) => Promise<void>;
   stopRun: () => void;
-  setActiveResultCase: (caseId: string) => void;
+  setActiveRun: (runId: string | null) => void;
+  setCompareRun: (runId: string | null) => void;
+  removeRun: (runId: string) => void;
+  clearRuns: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
@@ -160,6 +320,101 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     return project.systems.find((s) => s.parentId === null) ?? project.systems[0];
   }
 
+  /**
+   * Register a run at the head of the rolling history, stream the live result
+   * into it, and resolve with the final SimResult. Shared by `run` (one call)
+   * and `runSweep` (one call per swept value). Does NOT run the validation
+   * gate, toggle `running`, or switch ribbon tabs — the callers own that.
+   */
+  async function executeRun(
+    projectToRun: Project,
+    caseId: string,
+    caseName: string,
+  ): Promise<SimResult> {
+    const { libraryById, log } = get();
+    const runId = uid("run");
+    const partial: SimResult = {
+      caseId,
+      status: "success",
+      messages: [],
+      channels: [],
+      summary: [],
+    };
+    const newRun: SimRun = {
+      id: runId,
+      caseId,
+      caseName,
+      startedAt: Date.now(),
+      status: "running",
+      result: partial,
+    };
+    set((s) => ({
+      runs: [newRun, ...s.runs].slice(0, MAX_RUNS),
+      activeRunId: runId,
+      liveValues: {},
+      liveT: 0,
+      livePct: 0,
+    }));
+
+    // incremental result assembly: step events stream in, the store is
+    // flushed at most every LIVE_FLUSH_MS so charts/monitors update live
+    const meta = channelMetaResolver(projectToRun, libraryById);
+    const chanByKey = new Map<string, Channel>();
+    let buffer: api.StepEvent[] = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    const patchRun = (patch: Partial<SimRun>) =>
+      set((s) => ({ runs: s.runs.map((r) => (r.id === runId ? { ...r, ...patch } : r)) }));
+    const flush = () => {
+      flushTimer = null;
+      if (buffer.length === 0) return;
+      const latest = buffer[buffer.length - 1];
+      for (const step of buffer) {
+        for (const [key, value] of Object.entries(step.values)) {
+          let ch = chanByKey.get(key);
+          if (!ch) {
+            const m = meta(key);
+            if (!m) continue;
+            ch = { ...m, timeSeries: [] };
+            chanByKey.set(key, ch);
+            partial.channels.push(ch);
+          }
+          ch.timeSeries.push({ t: step.t, value });
+        }
+      }
+      buffer = [];
+      set((s) => ({
+        runs: s.runs.map((r) => (r.id === runId ? { ...r, result: { ...partial } } : r)),
+        liveValues: { ...latest.values },
+        liveT: latest.t,
+        livePct: latest.pct,
+      }));
+    };
+
+    const handle = api.runSimulationLive(projectToRun, caseId, {
+      onStep: (ev) => {
+        buffer.push(ev);
+        if (!flushTimer) flushTimer = setTimeout(flush, LIVE_FLUSH_MS);
+      },
+      onMessage: (m) => log(m.level, m.text),
+    });
+    activeRun = handle;
+    try {
+      const result = await handle.done;
+      if (flushTimer) clearTimeout(flushTimer);
+      set((s) => ({
+        runs: s.runs.map((r) => (r.id === runId ? { ...r, result, status: result.status } : r)),
+        activeRunId: runId,
+      }));
+      return result;
+    } catch (e) {
+      if (flushTimer) clearTimeout(flushTimer);
+      patchRun({ status: "failed" });
+      throw e;
+    } finally {
+      activeRun = null;
+    }
+  }
+
   return {
     library: [],
     libraryById: {},
@@ -169,13 +424,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     activeSystemId: null,
     selectedElementId: null,
     dirty: false,
+    clipboard: null,
+    pendingCanvasSelection: null,
     past: [],
     future: [],
     messages: [],
     dataChecks: null,
-    results: {},
+    runs: [],
     activeCaseId: null,
-    activeResultCaseId: null,
+    activeRunId: null,
+    compareRunId: null,
     running: false,
     checking: false,
     liveValues: {},
@@ -186,18 +444,26 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const lib = await api.fetchLibrary();
       const demo = await api.fetchDemoProject();
       const libraryById = Object.fromEntries(lib.components.map((c) => [c.id, c]));
+      // restore the autosaved working copy if one exists, else open the demo
+      const draft = loadDraft();
+      const project = draft?.project ?? demo.project;
       set({
         library: lib.components,
         libraryById,
         offline: lib.offline,
         loaded: true,
-        project: demo.project,
-        activeSystemId: rootSystemOf(demo.project).id,
-        activeCaseId: demo.project.cases[0]?.id ?? null,
+        project,
+        activeSystemId: rootSystemOf(project).id,
+        activeCaseId: project.cases[0]?.id ?? null,
+        dirty: Boolean(draft),
       });
       const log = get().log;
       log("info", `Component library loaded (${lib.components.length} components).`);
-      log("info", `Project '${demo.project.name}' opened.`);
+      if (draft) {
+        log("info", `Restored your unsaved draft from ${new Date(draft.savedAt).toLocaleString()}.`);
+      } else {
+        log("info", `Project '${demo.project.name}' opened.`);
+      }
       if (lib.offline) {
         log(
           "warning",
@@ -258,6 +524,19 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
       }, false),
 
+    resizeElement: (id, size) =>
+      updateProject((draft) => {
+        for (const s of draft.systems) {
+          const el = s.elements.find((e) => e.id === id);
+          if (el) {
+            el.size = {
+              width: Math.round(size.width),
+              height: Math.round(size.height),
+            };
+          }
+        }
+      }, false),
+
     beginHistory: () => {
       const { project, past } = get();
       if (!project) return;
@@ -304,6 +583,45 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
+    copyElements: (ids) => {
+      const { project, activeSystemId } = get();
+      if (!project || !activeSystemId || ids.length === 0) return;
+      set({ clipboard: collectSelection(project, activeSystemId, ids) });
+    },
+
+    duplicateElements: (ids) => {
+      const { project, activeSystemId } = get();
+      if (!project || !activeSystemId || ids.length === 0) return;
+      const data = collectSelection(project, activeSystemId, ids);
+      let newIds: string[] = [];
+      updateProject((draft) => {
+        newIds = cloneElementsInto(draft, activeSystemId, data, { x: 28, y: 28 });
+      });
+      if (newIds.length) {
+        set({ pendingCanvasSelection: newIds, selectedElementId: newIds[newIds.length - 1] });
+      }
+    },
+
+    pasteClipboard: (position) => {
+      const { project, activeSystemId, clipboard } = get();
+      if (!project || !activeSystemId || !clipboard || clipboard.elements.length === 0) return;
+      let offset = { x: 28, y: 28 };
+      if (position) {
+        const minX = Math.min(...clipboard.elements.map((e) => e.position.x));
+        const minY = Math.min(...clipboard.elements.map((e) => e.position.y));
+        offset = { x: position.x - minX, y: position.y - minY };
+      }
+      let newIds: string[] = [];
+      updateProject((draft) => {
+        newIds = cloneElementsInto(draft, activeSystemId, clipboard, offset);
+      });
+      if (newIds.length) {
+        set({ pendingCanvasSelection: newIds, selectedElementId: newIds[newIds.length - 1] });
+      }
+    },
+
+    clearPendingSelection: () => set({ pendingCanvasSelection: null }),
+
     renameElement: (id, label) =>
       updateProject((draft) => {
         for (const s of draft.systems) {
@@ -336,6 +654,18 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         for (const s of draft.systems) {
           const el = s.elements.find((e) => e.id === elementId);
           if (el) el.portSides = { ...el.portSides, [portId]: side };
+        }
+      }),
+
+    setPortPlacement: (elementId, portId, side, offset) =>
+      updateProject((draft) => {
+        const clamped = Math.min(0.92, Math.max(0.08, offset));
+        for (const s of draft.systems) {
+          const el = s.elements.find((e) => e.id === elementId);
+          if (el) {
+            el.portSides = { ...el.portSides, [portId]: side };
+            el.portOffsets = { ...el.portOffsets, [portId]: clamped };
+          }
         }
       }),
 
@@ -527,11 +857,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         project,
         activeSystemId: rootId,
         activeCaseId: caseId,
-        activeResultCaseId: null,
+        activeRunId: null,
+        compareRunId: null,
         selectedElementId: null,
         past: [],
         future: [],
-        results: {},
+        runs: [],
         dataChecks: null,
         dirty: false,
       });
@@ -545,11 +876,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           project,
           activeSystemId: project.systems.find((s) => s.parentId === null)?.id ?? project.systems[0]?.id,
           activeCaseId: project.cases[0]?.id ?? null,
-          activeResultCaseId: null,
+          activeRunId: null,
+          compareRunId: null,
           selectedElementId: null,
           past: [],
           future: [],
-          results: {},
+          runs: [],
           dataChecks: null,
           dirty: false,
         });
@@ -596,11 +928,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           project,
           activeSystemId: project.systems.find((s) => s.parentId === null)?.id ?? project.systems[0]?.id,
           activeCaseId: project.cases[0]?.id ?? null,
-          activeResultCaseId: null,
+          activeRunId: null,
+          compareRunId: null,
           selectedElementId: null,
           past: [],
           future: [],
-          results: {},
+          runs: [],
           dataChecks: null,
           dirty: true,
         });
@@ -631,6 +964,54 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ activeCaseId: id });
     },
 
+    duplicateCase: (id) => {
+      const newId = uid("case");
+      updateProject((draft) => {
+        const idx = draft.cases.findIndex((c) => c.id === id);
+        if (idx < 0) return;
+        draft.cases.splice(idx + 1, 0, {
+          ...draft.cases[idx],
+          id: newId,
+          name: `${draft.cases[idx].name} (copy)`,
+          // deep-clone so the copy's overrides aren't a shared reference
+          parameterOverrides: structuredClone(draft.cases[idx].parameterOverrides ?? {}),
+        });
+      });
+      set({ activeCaseId: newId });
+    },
+
+    removeCase: (id) => {
+      const { project, activeCaseId } = get();
+      if (!project || project.cases.length <= 1) return;
+      const fallback = project.cases.find((c) => c.id !== id)?.id ?? null;
+      updateProject((draft) => {
+        draft.cases = draft.cases.filter((c) => c.id !== id);
+      });
+      if (activeCaseId === id) set({ activeCaseId: fallback });
+    },
+
+    setCaseOverride: (caseId, elementId, key, value) =>
+      updateProject((draft) => {
+        const c = draft.cases.find((cc) => cc.id === caseId);
+        if (!c) return;
+        const ov = { ...(c.parameterOverrides ?? {}) };
+        ov[elementId] = { ...(ov[elementId] ?? {}), [key]: value };
+        c.parameterOverrides = ov;
+      }),
+
+    clearCaseOverride: (caseId, elementId, key) =>
+      updateProject((draft) => {
+        const c = draft.cases.find((cc) => cc.id === caseId);
+        const forEl = c?.parameterOverrides?.[elementId];
+        if (!c || !forEl) return;
+        const next = { ...forEl };
+        delete next[key];
+        const ov = { ...c.parameterOverrides };
+        if (Object.keys(next).length === 0) delete ov[elementId];
+        else ov[elementId] = next;
+        c.parameterOverrides = ov;
+      }),
+
     runDataChecks: async () => {
       const { project, log } = get();
       if (!project) return [];
@@ -644,7 +1025,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           errors ? "error" : warnings ? "warning" : "info",
           `Data checks: ${errors} error(s), ${warnings} warning(s).`,
         );
-        useUIStore.getState().focusPanel("data-checks");
+        {
+          const ui = useUIStore.getState();
+          if (ui.ribbonTab === "results") ui.setRibbonTab("home");
+          ui.focusPanel("data-checks");
+        }
         return checks;
       } catch (e) {
         set({ checking: false });
@@ -654,104 +1039,170 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     run: async () => {
-      const { project, activeCaseId, log, libraryById, running } = get();
+      const { project, activeCaseId, log, running } = get();
       if (!project || running) return;
       if (!activeCaseId) {
         log("error", "No simulation case selected.");
         return;
       }
+
+      // pre-flight validation gate: block the run on error-level data checks so
+      // broken models fail fast (and visibly) instead of deep inside the solver.
+      set({ running: true });
+      if (!(await get().passesRunGate())) {
+        set({ running: false });
+        return;
+      }
+
       const caseId = activeCaseId;
       const simCase = project.cases.find((c) => c.id === caseId);
       log("info", `Running case '${simCase?.name ?? caseId}' …`);
-
-      // incremental result assembly: step events stream in, the store is
-      // flushed at most every LIVE_FLUSH_MS so charts/monitors update live
-      const meta = channelMetaResolver(project, libraryById);
-      const chanByKey = new Map<string, Channel>();
-      const partial: SimResult = {
-        caseId,
-        status: "success",
-        messages: [],
-        channels: [],
-        summary: [],
-      };
-      let buffer: api.StepEvent[] = [];
-      let flushTimer: ReturnType<typeof setTimeout> | null = null;
-      const flush = () => {
-        flushTimer = null;
-        if (buffer.length === 0) return;
-        const latest = buffer[buffer.length - 1];
-        for (const step of buffer) {
-          for (const [key, value] of Object.entries(step.values)) {
-            let ch = chanByKey.get(key);
-            if (!ch) {
-              const m = meta(key);
-              if (!m) continue;
-              ch = { ...m, timeSeries: [] };
-              chanByKey.set(key, ch);
-              partial.channels.push(ch);
-            }
-            ch.timeSeries.push({ t: step.t, value });
-          }
-        }
-        buffer = [];
-        set((s) => ({
-          results: { ...s.results, [caseId]: { ...partial } },
-          liveValues: { ...latest.values },
-          liveT: latest.t,
-          livePct: latest.pct,
-        }));
-      };
-
-      set({ running: true, activeResultCaseId: caseId, liveValues: {}, liveT: 0, livePct: 0 });
-      const handle = api.runSimulationLive(project, caseId, {
-        onStep: (ev) => {
-          buffer.push(ev);
-          if (!flushTimer) flushTimer = setTimeout(flush, LIVE_FLUSH_MS);
-        },
-        onMessage: (m) => log(m.level, m.text),
-      });
-      activeRun = handle;
       try {
-        const result = await handle.done;
-        if (flushTimer) clearTimeout(flushTimer);
-        set((s) => ({
-          running: false,
-          results: { ...s.results, [caseId]: result },
-          activeResultCaseId: caseId,
-        }));
+        const result = await executeRun(project, caseId, simCase?.name ?? caseId);
+        set({ running: false });
         if (result.status === "failed") {
           log("error", "Simulation failed — see messages above.");
-          useUIStore.getState().focusPanel("messages");
+          const ui = useUIStore.getState();
+          if (ui.ribbonTab === "results") ui.setRibbonTab("home");
+          ui.focusPanel("messages");
         } else {
           log(
             result.status === "warning" ? "warning" : "info",
             `Simulation finished with status '${result.status}'. ${result.channels.length} channels available in Results.`,
           );
-          useUIStore.getState().focusPanel("results");
+          // switch to the full-page Results workspace
+          useUIStore.getState().setRibbonTab("results");
         }
       } catch (e) {
-        if (flushTimer) clearTimeout(flushTimer);
         set({ running: false });
         log("error", `Simulation failed: ${(e as Error).message}`);
-        useUIStore.getState().focusPanel("messages");
-      } finally {
-        activeRun = null;
+        const ui = useUIStore.getState();
+        if (ui.ribbonTab === "results") ui.setRibbonTab("home");
+        ui.focusPanel("messages");
       }
     },
 
+    runSweep: async ({ caseId, elementId, paramKey, values }) => {
+      const { project, log, libraryById, running } = get();
+      if (!project || running) return;
+      const simCase = project.cases.find((c) => c.id === caseId);
+      if (!simCase) {
+        log("error", "Sweep target case not found.");
+        return;
+      }
+      if (values.length === 0) {
+        log("error", "Sweep has no values to run.");
+        return;
+      }
+
+      const el = project.systems.flatMap((s) => s.elements).find((e) => e.id === elementId);
+      const pdef = el && libraryById[el.componentDefId]?.parameters.find((p) => p.key === paramKey);
+      const paramLabel = pdef ? pdef.label : paramKey;
+      const unit = pdef && pdef.unit !== "-" ? ` ${pdef.unit}` : "";
+
+      set({ running: true });
+      if (!(await get().passesRunGate())) {
+        set({ running: false });
+        return;
+      }
+
+      sweepAborted = false;
+      log(
+        "info",
+        `Sweep: ${el?.label ?? elementId} · ${paramLabel} over ${values.length} value(s) …`,
+      );
+      let completed = 0;
+      try {
+        for (const value of values) {
+          if (sweepAborted) break;
+          // clone the project so the swept override is scoped to this one run
+          const runProject = structuredClone(project);
+          const rc = runProject.cases.find((c) => c.id === caseId);
+          if (!rc) break;
+          rc.parameterOverrides = {
+            ...(rc.parameterOverrides ?? {}),
+            [elementId]: { ...(rc.parameterOverrides?.[elementId] ?? {}), [paramKey]: value },
+          };
+          const label = `${simCase.name} · ${paramLabel}=${value}${unit}`;
+          try {
+            await executeRun(runProject, caseId, label);
+            completed += 1;
+          } catch (e) {
+            log("error", `Sweep point ${paramLabel}=${value} failed: ${(e as Error).message}`);
+            // keep going with the remaining points
+          }
+        }
+      } finally {
+        set({ running: false });
+      }
+      if (completed > 0) {
+        log(
+          "info",
+          `Sweep finished — ${completed} of ${values.length} run(s) stored in Results.`,
+        );
+        useUIStore.getState().setRibbonTab("results");
+      } else {
+        log("warning", "Sweep produced no runs.");
+      }
+    },
+
+    /** Error-level data-check gate shared by run + runSweep. */
+    passesRunGate: async () => {
+      const { project, log } = get();
+      if (!project) return false;
+      try {
+        const checks = await api.validateProject(project);
+        set({ dataChecks: checks });
+        const errors = checks.filter((c) => c.level === "error");
+        if (errors.length > 0) {
+          log("error", `Run blocked — fix ${errors.length} data-check error(s) first.`);
+          const ui = useUIStore.getState();
+          if (ui.ribbonTab === "results") ui.setRibbonTab("home");
+          ui.focusPanel("data-checks");
+          return false;
+        }
+      } catch (e) {
+        // backend unreachable — the run's own connection will surface the failure
+        log("warning", `Pre-flight data checks unavailable (${(e as Error).message}); running anyway.`);
+      }
+      return true;
+    },
+
     stopRun: () => {
+      sweepAborted = true;
       if (activeRun) {
         activeRun.cancel();
         get().log("info", "Stop requested — waiting for the solver to wind down …");
       }
     },
 
-    setActiveResultCase: (caseId) => set({ activeResultCaseId: caseId }),
+    setActiveRun: (runId) => set({ activeRunId: runId }),
+    setCompareRun: (runId) =>
+      set((s) => ({ compareRunId: runId === s.activeRunId ? null : runId })),
+    removeRun: (runId) =>
+      set((s) => {
+        const runs = s.runs.filter((r) => r.id !== runId);
+        return {
+          runs,
+          activeRunId: s.activeRunId === runId ? (runs[0]?.id ?? null) : s.activeRunId,
+          compareRunId: s.compareRunId === runId ? null : s.compareRunId,
+        };
+      }),
+    clearRuns: () => set({ runs: [], activeRunId: null, compareRunId: null }),
   };
 });
 
 // -- convenience selectors ----------------------------------------------------
+
+export function useActiveRun(): SimRun | null {
+  return useProjectStore((s) => s.runs.find((r) => r.id === s.activeRunId) ?? null);
+}
+
+export function useCompareRun(): SimRun | null {
+  return useProjectStore((s) =>
+    s.compareRunId ? (s.runs.find((r) => r.id === s.compareRunId) ?? null) : null,
+  );
+}
 
 export function useActiveSystem(): SystemNode | null {
   return useProjectStore((s) => {

@@ -154,6 +154,7 @@ class Model:
     fuel_tank: str | None
     h2_tank: str | None
     signal_blocks: list[str]  # Script/PID/Lookup/RoadProfile ids in eval order
+    floating_returns: list[str] = field(default_factory=list)  # unwired − terminals
     warnings: list[str] = field(default_factory=list)
 
 
@@ -183,13 +184,20 @@ def gearbox_ratio(params: dict, gear: float | None = None) -> float:
     return best[1] or 1.0
 
 
-def build_model(project: Project, gear_of: dict[str, float] | None = None) -> Model:
+def build_model(
+    project: Project,
+    gear_of: dict[str, float] | None = None,
+    case_overrides: dict[str, dict] | None = None,
+) -> Model:
     """Reduce the project. `gear_of` optionally overrides gearbox gears
-    (used by the core to rebuild drivelines after a shift)."""
+    (used by the core to rebuild drivelines after a shift). `case_overrides`
+    ({elementId: {paramKey: value}}) layers per-case parameter values on top
+    of each element's own overrides (used by parameter sweeps / per-case tweaks)."""
     defs = library_by_id()
     errors: list[str] = []
     warnings: list[str] = []
     gear_of = gear_of or {}
+    case_overrides = case_overrides or {}
 
     elements: dict[str, ElementInstance] = {}
     for system in project.systems:
@@ -207,6 +215,9 @@ def build_model(project: Project, gear_of: dict[str, float] | None = None) -> Mo
             errors.append(f"'{el.label}' has custom ports but '{cdef.name}' does not allow them.")
 
     params_of = {el_id: resolve_params(elements[el_id], cdef) for el_id, cdef in cdef_of.items()}
+    for el_id, ov in case_overrides.items():
+        if el_id in params_of and isinstance(ov, dict):
+            params_of[el_id].update(ov)
 
     port_def: dict[tuple[str, str], PortDef] = {}
     for el_id, cdef in cdef_of.items():
@@ -548,49 +559,62 @@ def build_model(project: Project, gear_of: dict[str, float] | None = None) -> Mo
             return None
         return bus_of_port.get((el_id, pid))
 
+    def positive_bus(el_id: str, pid: str = "pos") -> Bus | None:
+        """Bus behind a positive (+) terminal, if wired to a live rail.
+        Power is delivered/drawn here; the negative terminal is the return."""
+        bus = attached_bus(el_id, pid)
+        return bus if (bus and not bus.grounded) else None
+
+    # A component's negative (−) terminal defines its return path. The
+    # simplified solver balances power on the positive rail only, so an
+    # unwired return is allowed (implicit ground); we record it so the
+    # data checks can note it.
+    floating_returns: list[str] = []
+    for el_id, cdef in cdef_of.items():
+        neg_ports = [p.id for p in cdef.ports
+                     if p.kind == "electrical" and p.polarity == "negative"]
+        if neg_ports and not any((el_id, pid) in connected_ports for pid in neg_ports):
+            floating_returns.append(el_id)
+
     for el_id, cdef in cdef_of.items():
         t = cdef.id
         label = elements[el_id].label
         if t == "battery.generic":
-            active = {bus for bus in (attached_bus(el_id, p) for p in ("vs1", "vs2"))
-                      if bus is not None and not bus.grounded}
-            if len(active) > 1:
-                errors.append(f"Battery '{label}' bridges two live buses — not supported.")
-            elif active:
-                bus = active.pop()
+            bus = positive_bus(el_id)
+            if bus is not None:
                 if bus.battery:
                     errors.append(f"Bus has two batteries ('{label}' and "
                                   f"'{elements[bus.battery].label}') — not supported yet.")
                 else:
                     bus.battery = el_id
         elif t == "electric.voltage_source":
-            bus = attached_bus(el_id, "terminal")
-            if bus and not bus.grounded:
+            bus = positive_bus(el_id)
+            if bus is not None:
                 if bus.vsource:
                     errors.append("Bus has two voltage sources — not supported.")
                 else:
                     bus.vsource = el_id
         elif t == "fuelcell.stack":
-            bus = attached_bus(el_id, "terminal")
-            if bus and not bus.grounded:
+            bus = positive_bus(el_id)
+            if bus is not None:
                 if bus.fuelcell:
                     errors.append("Bus has two fuel cells — not supported yet.")
                 else:
                     bus.fuelcell = el_id
         elif t == "electric.constant_drive":
-            bus = attached_bus(el_id, "terminal")
-            if bus and not bus.grounded:
+            bus = positive_bus(el_id)
+            if bus is not None:
                 bus.consumers.append(el_id)
         elif t == "motor.emotor":
-            bus = attached_bus(el_id, "terminal")
-            if bus and not bus.grounded:
+            bus = positive_bus(el_id)
+            if bus is not None:
                 bus.motors.append(el_id)
         elif t == "controller.dcdc":
-            bus_a = attached_bus(el_id, "terminal_a")
-            bus_b = attached_bus(el_id, "terminal_b")
-            if bus_a and not bus_a.grounded:
+            bus_a = positive_bus(el_id, "a_pos")
+            bus_b = positive_bus(el_id, "b_pos")
+            if bus_a is not None:
                 bus_a.dcdc_in.append(el_id)
-            if bus_b and not bus_b.grounded:
+            if bus_b is not None:
                 bus_b.dcdc_out.append(el_id)
 
     for bus in buses:
@@ -686,5 +710,6 @@ def build_model(project: Project, gear_of: dict[str, float] | None = None) -> Mo
         fuel_tank=fuel_tank,
         h2_tank=h2_tank,
         signal_blocks=ordered,
+        floating_returns=floating_returns,
         warnings=warnings,
     )

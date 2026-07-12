@@ -286,15 +286,8 @@
         {
           "id": "c-1",
           "sourceElementId": "el-battery",
-          "sourcePortId": "vs1",
+          "sourcePortId": "pos",
           "targetElementId": "el-hvbus",
-          "targetPortId": "t1"
-        },
-        {
-          "id": "c-2",
-          "sourceElementId": "el-battery",
-          "sourcePortId": "vs2",
-          "targetElementId": "el-ground",
           "targetPortId": "t1"
         },
         {
@@ -302,14 +295,35 @@
           "sourceElementId": "el-hvbus",
           "sourcePortId": "t2",
           "targetElementId": "el-consumer",
-          "targetPortId": "terminal"
+          "targetPortId": "pos"
         },
         {
           "id": "c-4",
           "sourceElementId": "el-hvbus",
           "sourcePortId": "t3",
           "targetElementId": "el-motor",
-          "targetPortId": "terminal"
+          "targetPortId": "pos"
+        },
+        {
+          "id": "c-2",
+          "sourceElementId": "el-battery",
+          "sourcePortId": "neg",
+          "targetElementId": "el-ground",
+          "targetPortId": "t1"
+        },
+        {
+          "id": "c-18",
+          "sourceElementId": "el-consumer",
+          "sourcePortId": "neg",
+          "targetElementId": "el-ground",
+          "targetPortId": "t2"
+        },
+        {
+          "id": "c-19",
+          "sourceElementId": "el-motor",
+          "sourcePortId": "neg",
+          "targetElementId": "el-ground",
+          "targetPortId": "t3"
         },
         {
           "id": "c-5",

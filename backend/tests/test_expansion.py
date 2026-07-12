@@ -2,9 +2,38 @@
 fuel cell + DC-DC setpoint, PID, lookup, road profile."""
 from app.schemas import ElementInstance
 from app.solver import simulate
+from app.solver.network import build_model
 from app.validation import validate_project
 
-from helpers import conn, dbc, driver_wiring, el, project, series, sig_port
+from helpers import bev_axle, conn, dbc, driver_wiring, el, project, series, sig_port
+
+
+def test_electrical_two_terminal_roles_and_implicit_return():
+    # bev_axle wires only the positive rail; negatives are left implicit
+    proj = bev_axle()
+    model = build_model(proj)
+    hv = [b for b in model.buses if b.battery == "batt"]
+    assert hv, "battery should own its bus via the positive (+) terminal"
+    assert "mot" in hv[0].motors, "motor draws on the bus via its positive terminal"
+    assert "batt" in model.floating_returns and "mot" in model.floating_returns
+    checks = validate_project(proj)
+    assert any("implicit ground return" in c.text for c in checks if c.level == "info")
+    assert not [c for c in checks if c.level == "error"]
+
+
+def test_explicit_return_rail_clears_floating_and_solves():
+    proj = bev_axle()
+    proj.systems[0].elements.append(el("grnd", "boundary.ground", "Ground"))
+    proj.systems[0].connections += [
+        conn(30, "batt", "neg", "grnd", "t1"),
+        conn(31, "mot", "neg", "grnd", "t2"),
+    ]
+    model = build_model(proj)
+    assert "batt" not in model.floating_returns
+    assert "mot" not in model.floating_returns
+    result = simulate(proj, "case")
+    assert result.status in ("success", "warning"), [m.text for m in result.messages]
+    assert not any("implicit ground return" in m.text for m in result.messages)
 
 
 def _ice_car(profile="0:0; 5:60; 60:60", tank_kg=45.0, gear_script=None):
@@ -121,8 +150,8 @@ def _awd(locked: bool, mu_front: float):
         el("wrr", "propulsion.wheel", "Wheel RR"),
     ]
     connections = [
-        conn(1, "batt", "vs1", "hvbus", "t1"),
-        conn(2, "hvbus", "t3", "mot", "terminal"),
+        conn(1, "batt", "pos", "hvbus", "t1"),
+        conn(2, "hvbus", "t3", "mot", "pos"),
         conn(3, "mot", "shaft", "fd", "flange_in"),
         conn(4, "fd", "flange_out", "tc", "flange_in"),
         conn(5, "tc", "flange_out_a", "dfff", "flange_in"),
@@ -173,11 +202,11 @@ def test_fuel_cell_via_dcdc_setpoint_into_battery_bus():
         el("whr", "propulsion.wheel", "Wheel R"),
     ]
     connections = [
-        conn(1, "fc", "terminal", "fcbus", "t1"),
-        conn(2, "fcbus", "t2", "dc", "terminal_a"),
-        conn(3, "dc", "terminal_b", "hvbus", "t1"),
-        conn(4, "batt", "vs1", "hvbus", "t2"),
-        conn(5, "hvbus", "t3", "mot", "terminal"),
+        conn(1, "fc", "pos", "fcbus", "t1"),
+        conn(2, "fcbus", "t2", "dc", "a_pos"),
+        conn(3, "dc", "b_pos", "hvbus", "t1"),
+        conn(4, "batt", "pos", "hvbus", "t2"),
+        conn(5, "hvbus", "t3", "mot", "pos"),
         conn(6, "mot", "shaft", "fd", "flange_in"),
         conn(7, "fd", "flange_out", "diff", "flange_in"),
         conn(8, "diff", "flange_out_a", "whl", "shaft"),
@@ -252,8 +281,8 @@ def test_road_profile_time_mode_and_vehicle_grade():
         el("whr", "propulsion.wheel", "Wheel R"),
     ]
     connections = [
-        conn(1, "batt", "vs1", "hvbus", "t1"),
-        conn(2, "hvbus", "t3", "mot", "terminal"),
+        conn(1, "batt", "pos", "hvbus", "t1"),
+        conn(2, "hvbus", "t3", "mot", "pos"),
         conn(3, "mot", "shaft", "fd", "flange_in"),
         conn(4, "fd", "flange_out", "diff", "flange_in"),
         conn(5, "diff", "flange_out_a", "whl", "shaft"),
@@ -329,8 +358,8 @@ def test_hybrid_p2_hcu_charges_low_battery():
         ),
     ]
     connections = [
-        conn(1, "batt", "vs1", "hvbus", "t1"),
-        conn(2, "hvbus", "t3", "mot", "terminal"),
+        conn(1, "batt", "pos", "hvbus", "t1"),
+        conn(2, "hvbus", "t3", "mot", "pos"),
         conn(3, "eng", "shaft", "cl", "flange_a"),
         conn(4, "cl", "flange_b", "nd", "f1"),
         conn(5, "mot", "shaft", "nd", "f2"),
