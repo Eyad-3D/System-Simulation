@@ -1,5 +1,6 @@
 import { CloudOff, Loader2, Plus } from "lucide-react";
 import { useProjectStore } from "../store/projectStore";
+import { confirmDialog } from "../dialog";
 
 export function StatusBar() {
   const project = useProjectStore((s) => s.project);
@@ -27,9 +28,16 @@ export function StatusBar() {
           className="mb-0.5 rounded p-0.5 hover:bg-[color:var(--ss-hover)]"
           title="New project"
           onClick={() => {
-            if (!dirty || window.confirm("Discard unsaved changes and create a new project?")) {
+            if (!dirty) {
               newProject();
+              return;
             }
+            void confirmDialog({
+              title: "Discard unsaved changes?",
+              message: "Creating a new project will discard the current unsaved work.",
+              confirmLabel: "New project",
+              danger: true,
+            }).then((ok) => ok && newProject());
           }}
         >
           <Plus size={13} />

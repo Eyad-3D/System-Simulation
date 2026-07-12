@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
-  ChevronDown,
   Copy,
   Download,
   FilePlus2,
@@ -25,6 +24,7 @@ import {
 } from "lucide-react";
 import * as api from "../api";
 import { resetDockLayout } from "./DockLayout";
+import { confirmDialog } from "../dialog";
 import { useProjectStore } from "../store/projectStore";
 import { useUIStore, type RibbonTab } from "../store/uiStore";
 
@@ -234,66 +234,21 @@ function SimulationsTab() {
               <Trash2 size={14} />
             </button>
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-[color:var(--ss-text-dim)]">
-            <span>Duration</span>
-            <input
-              type="number"
-              className="ss-input w-[64px]"
-              value={activeCase?.duration ?? 0}
-              min={1}
-              onChange={(e) =>
-                activeCase && store.setCaseField(activeCase.id, { duration: Number(e.target.value) || 1 })
-              }
-            />
-            <span>s</span>
-            <span className="ml-2" title="Solver step: signals and control blocks evaluate at this interval; mechanics sub-step to ≤10 ms internally.">Step</span>
-            <input
-              type="number"
-              className="ss-input w-[64px]"
-              title="Solver step in seconds (min 0.0001). Smaller = finer, more compute."
-              value={activeCase?.timeStep ?? 1}
-              step="any"
-              min={0.0001}
-              onChange={(e) =>
-                activeCase &&
-                store.setCaseField(activeCase.id, {
-                  timeStep: Math.max(0.0001, Number(e.target.value) || 1),
-                })
-              }
-            />
-            <span>s</span>
-            <span className="ml-2" title="Store a data point every N solver steps. Output interval = Step × this. Use to keep results small at fine step sizes.">Store every</span>
-            <input
-              type="number"
-              className="ss-input w-[52px]"
-              title="Record a result point every N solver steps (1 = every step)."
-              value={activeCase?.outputEvery ?? 1}
-              step={1}
-              min={1}
-              onChange={(e) =>
-                activeCase &&
-                store.setCaseField(activeCase.id, {
-                  outputEvery: Math.max(1, Math.round(Number(e.target.value) || 1)),
-                })
-              }
-            />
-            <span>steps</span>
-            <span className="ml-2">Pacing</span>
-            <select
-              className="ss-input w-[90px]"
-              title="0 = solve as fast as possible; N× paces the run against real time so you can watch and tune it live"
-              value={activeCase?.realtimeFactor ?? 0}
-              onChange={(e) =>
-                activeCase &&
-                store.setCaseField(activeCase.id, { realtimeFactor: Number(e.target.value) })
-              }
+          <div className="flex items-center gap-2 text-[11px] text-[color:var(--ss-text-dim)]">
+            <span title="Solver settings for this case">
+              {activeCase
+                ? `${activeCase.duration}s · step ${activeCase.timeStep}s${
+                    (activeCase.outputEvery ?? 1) > 1 ? ` · store ×${activeCase.outputEvery}` : ""
+                  }${(activeCase.realtimeFactor ?? 0) > 0 ? ` · ${activeCase.realtimeFactor}× pacing` : ""}`
+                : "—"}
+            </span>
+            <button
+              className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px]"
+              title="Edit duration, step, decimation and pacing in the Cases & Parameters panel"
+              onClick={() => useUIStore.getState().focusPanel("cases")}
             >
-              <option value={0}>Max speed</option>
-              <option value={1}>1× real time</option>
-              <option value={5}>5×</option>
-              <option value={10}>10×</option>
-              <option value={30}>30×</option>
-            </select>
+              <Settings2 size={12} /> Settings…
+            </button>
           </div>
         </div>
       </RibbonGroup>
@@ -354,7 +309,12 @@ function ResultsTab() {
             className="ss-toolbtn border border-[color:var(--ss-border)] px-1.5 text-[11px] disabled:opacity-40"
             disabled={count === 0 || running}
             onClick={() => {
-              if (window.confirm("Clear all stored runs from the results history?")) clearRuns();
+              void confirmDialog({
+                title: "Clear results history?",
+                message: "This removes all stored runs. Their data cannot be recovered.",
+                confirmLabel: "Clear history",
+                danger: true,
+              }).then((ok) => ok && clearRuns());
             }}
           >
             <Trash2 size={12} /> Clear history
@@ -370,7 +330,7 @@ function ParametersTab() {
   const run = useProjectStore((s) => s.run);
   const stopRun = useProjectStore((s) => s.stopRun);
   const project = useProjectStore((s) => s.project);
-  const cases = useProjectStore((s) => s.project?.cases ?? []);
+  const cases = project?.cases ?? [];
   const activeCaseId = useProjectStore((s) => s.activeCaseId);
   const setActiveCase = useProjectStore((s) => s.setActiveCase);
   const activeCase = cases.find((c) => c.id === activeCaseId);
@@ -449,6 +409,54 @@ function StubTab({ name }: { name: string }) {
   );
 }
 
+/** Always-visible run control (active case + Run/Stop + live progress) pinned
+ *  to the ribbon header so a run is one click away from any tab. */
+function GlobalRunControl() {
+  const running = useProjectStore((s) => s.running);
+  const run = useProjectStore((s) => s.run);
+  const stopRun = useProjectStore((s) => s.stopRun);
+  const project = useProjectStore((s) => s.project);
+  const cases = project?.cases ?? [];
+  const activeCaseId = useProjectStore((s) => s.activeCaseId);
+  const setActiveCase = useProjectStore((s) => s.setActiveCase);
+  const livePct = useProjectStore((s) => s.livePct);
+  return (
+    <div className="flex items-center gap-1">
+      <select
+        className="ss-input max-w-[150px] py-[3px] text-[11px]"
+        value={activeCaseId ?? ""}
+        onChange={(e) => setActiveCase(e.target.value)}
+        title="Active simulation case"
+        disabled={running}
+      >
+        {cases.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      {running ? (
+        <button
+          className="flex items-center gap-1 rounded bg-red-600 px-2 py-[3px] text-[11px] font-semibold text-white hover:bg-red-700"
+          onClick={stopRun}
+          title="Stop the running simulation"
+        >
+          <Square size={11} /> Stop {livePct.toFixed(0)}%
+        </button>
+      ) : (
+        <button
+          className="flex items-center gap-1 rounded bg-[color:var(--ss-accent)] px-2 py-[3px] text-[11px] font-semibold text-white hover:brightness-110 disabled:opacity-40"
+          onClick={() => void run()}
+          disabled={!project}
+          title="Run the active case (Ctrl+Enter)"
+        >
+          <Play size={11} /> Run
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Ribbon() {
   const tab = useUIStore((s) => s.ribbonTab);
   const setTab = useUIStore((s) => s.setRibbonTab);
@@ -476,17 +484,20 @@ export function Ribbon() {
             {t.label}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-1 pr-1 text-[11px] text-[color:var(--ss-text-dim)]">
-          {projectName}
-          {dirty ? " •" : ""}
+        <div className="ml-auto flex items-center gap-2 pr-1 text-[11px] text-[color:var(--ss-text-dim)]">
+          <GlobalRunControl />
+          <div className="h-4 w-px bg-[color:var(--ss-border)]" />
+          <span className="max-w-[160px] truncate">
+            {projectName}
+            {dirty ? " •" : ""}
+          </span>
           <button
-            className="ml-2 rounded p-1 hover:bg-[color:var(--ss-hover)]"
+            className="rounded p-1 hover:bg-[color:var(--ss-hover)]"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             onClick={toggleTheme}
           >
             {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
           </button>
-          <ChevronDown size={12} className="opacity-0" />
         </div>
       </div>
       <div className="flex h-[72px] items-stretch border-t border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] px-1">

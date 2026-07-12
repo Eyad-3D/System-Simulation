@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { DockLayout } from "./components/DockLayout";
+import { DialogHost } from "./components/DialogHost";
 import { ParameterDialog } from "./components/ParameterDialog";
 import { Ribbon } from "./components/Ribbon";
 import { StatusBar } from "./components/StatusBar";
@@ -61,7 +62,13 @@ export default function App() {
         target.tagName === "SELECT" ||
         target.isContentEditable;
       const store = useProjectStore.getState();
-      if (e.key.toLowerCase() === "s") {
+      if (e.key === "Enter") {
+        // Ctrl/Cmd+Enter runs the active case from anywhere (except while
+        // editing multi-line code, where Enter belongs to the editor).
+        if (target.tagName === "TEXTAREA" || target.isContentEditable) return;
+        e.preventDefault();
+        if (!store.running) void store.run();
+      } else if (e.key.toLowerCase() === "s") {
         e.preventDefault();
         void store.saveRemote();
       } else if (!typing && e.key.toLowerCase() === "z" && !e.shiftKey) {
@@ -105,6 +112,7 @@ export default function App() {
       </div>
       <StatusBar />
       <ParameterDialog />
+      <DialogHost />
     </div>
   );
 }

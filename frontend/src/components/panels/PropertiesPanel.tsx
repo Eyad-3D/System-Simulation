@@ -1,7 +1,7 @@
-import { Fragment, useMemo, useState } from "react";
-import { Box, Columns3, CornerDownRight, FolderTree, Plus, Radio, Rows3, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Box, Columns3, CornerDownRight, Pencil, Plus, Radio, Rows3, Table2, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../store/projectStore";
-import { componentIcon } from "../../icons";
+import { useUIStore } from "../../store/uiStore";
 import { SpreadsheetGrid, type GridCell, type GridRange } from "../SpreadsheetGrid";
 import type {
   AxisDef,
@@ -10,7 +10,6 @@ import type {
   ParameterDef,
   ParamValue,
   PortDef,
-  SystemNode,
   Table1D,
   Table2D,
 } from "../../types";
@@ -541,64 +540,22 @@ function DynamicPortsEditor({ element }: { element: ElementInstance }) {
   );
 }
 
-function SystemTree({
-  system,
-  depth,
+export function ElementForm({
+  element,
+  def,
+  compact = false,
 }: {
-  system: SystemNode;
-  depth: number;
+  element: ElementInstance;
+  def: ComponentDef;
+  /** In the narrow Properties panel, table/code/profile params collapse to an
+   *  "Edit…" button that opens the roomier parameter dialog. */
+  compact?: boolean;
 }) {
-  const project = useProjectStore((s) => s.project);
-  const libraryById = useProjectStore((s) => s.libraryById);
-  const selectedElementId = useProjectStore((s) => s.selectedElementId);
-  const select = useProjectStore((s) => s.select);
-  const setActiveSystem = useProjectStore((s) => s.setActiveSystem);
-  const activeSystemId = useProjectStore((s) => s.activeSystemId);
-
-  if (!project) return null;
-  return (
-    <>
-      <button
-        className={`ss-tree-row font-semibold ${activeSystemId === system.id ? "text-[color:var(--ss-accent)]" : ""}`}
-        style={{ paddingLeft: 6 + depth * 14 }}
-        onClick={() => setActiveSystem(system.id)}
-        title="Show this system on the canvas"
-      >
-        <FolderTree size={13} className="shrink-0" />
-        <span className="truncate">{system.name}</span>
-      </button>
-      {system.elements.map((el) => {
-        const def = libraryById[el.componentDefId];
-        const Icon = componentIcon(def?.icon ?? "box");
-        const child = el.subSystemId
-          ? project.systems.find((s) => s.id === el.subSystemId)
-          : undefined;
-        return (
-          <Fragment key={el.id}>
-            <button
-              className={`ss-tree-row ${selectedElementId === el.id ? "selected" : ""}`}
-              style={{ paddingLeft: 20 + depth * 14 }}
-              onClick={() => {
-                if (activeSystemId !== system.id) setActiveSystem(system.id);
-                select(el.id);
-              }}
-            >
-              <Icon size={13} strokeWidth={1.6} className="shrink-0 text-[color:var(--ss-node-icon)]" />
-              <span className="truncate">{el.label}</span>
-            </button>
-            {child && <SystemTree system={child} depth={depth + 1} />}
-          </Fragment>
-        );
-      })}
-    </>
-  );
-}
-
-export function ElementForm({ element, def }: { element: ElementInstance; def: ComponentDef }) {
   const setParameter = useProjectStore((s) => s.setParameter);
   const renameElement = useProjectStore((s) => s.renameElement);
   const setActiveSystem = useProjectStore((s) => s.setActiveSystem);
   const running = useProjectStore((s) => s.running);
+  const openParamDialog = useUIStore((s) => s.openParamDialog);
 
   // profiles are stored as strings but edited as a full-width grid, so they
   // join the tables/code in the "big" (full-width) group rather than the
@@ -670,7 +627,29 @@ export function ElementForm({ element, def }: { element: ElementInstance; def: C
           </tbody>
         </table>
       )}
-      {bigParams.map((p) => (
+      {compact && bigParams.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {bigParams.map((p) => (
+            <button
+              key={p.key}
+              className="ss-toolbtn justify-between border border-[color:var(--ss-border)] px-2 py-1"
+              onClick={() => openParamDialog(element.id)}
+              title="Open the full editor in a dialog"
+            >
+              <span className="flex items-center gap-1.5">
+                {p.type === "code" ? <Pencil size={12} /> : <Table2 size={12} />}
+                {isProfile(p) ? "Profile" : p.label}
+                {p.type !== "code" && !isProfile(p) ? (
+                  <span className="text-[10px] text-[color:var(--ss-text-dim)]">({p.unit})</span>
+                ) : null}
+              </span>
+              <span className="text-[10px] text-[color:var(--ss-accent)]">Edit…</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {!compact &&
+        bigParams.map((p) => (
         <div key={p.key}>
           <div className="mb-1 text-[11px] font-semibold text-[color:var(--ss-text-dim)]">
             {isProfile(p) ? "Profile" : p.label}
@@ -753,7 +732,6 @@ export function PropertiesPanel() {
   const project = useProjectStore((s) => s.project);
   const libraryById = useProjectStore((s) => s.libraryById);
   const selectedElementId = useProjectStore((s) => s.selectedElementId);
-  const root = project?.systems.find((s) => s.parentId === null);
   const selected = project?.systems
     .flatMap((s) => s.elements)
     .find((e) => e.id === selectedElementId);
@@ -761,23 +739,16 @@ export function PropertiesPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="max-h-[45%] min-h-[90px] overflow-y-auto border-b border-[color:var(--ss-border)] py-1">
-        {root ? (
-          <SystemTree system={root} depth={0} />
-        ) : (
-          <div className="px-3 py-2 text-[12px] text-[color:var(--ss-text-dim)]">No project.</div>
-        )}
-      </div>
       <div className="ss-panel-toolbar text-[11px] font-semibold">
         {selected ? `Parameters — ${selected.label}` : "Parameters"}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {selected && selectedDef ? (
-          <ElementForm element={selected} def={selectedDef} />
+          <ElementForm element={selected} def={selectedDef} compact />
         ) : (
           <div className="flex flex-col items-center gap-2 p-6 text-center text-[12px] text-[color:var(--ss-text-dim)]">
             <Box size={22} strokeWidth={1.2} />
-            Select an element on the canvas or in the tree to edit its parameters.
+            Select an element on the canvas or in the Elements panel to edit its parameters.
           </div>
         )}
       </div>

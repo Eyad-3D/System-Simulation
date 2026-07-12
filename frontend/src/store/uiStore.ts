@@ -15,6 +15,20 @@ export type EdgeKindFilter = "electrical" | "mechanical" | "signal";
 
 export type Theme = "light" | "dark";
 
+/** A request to show the app's styled confirm/prompt modal (replaces the
+ *  native window.confirm/prompt). `resolve` settles the caller's promise. */
+export interface DialogRequest {
+  kind: "confirm" | "prompt";
+  title: string;
+  message?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  defaultValue?: string; // prompt only
+  placeholder?: string; // prompt only
+  resolve: (value: boolean | string | null) => void;
+}
+
 const THEME_KEY = "simstudio-theme";
 
 function loadTheme(): Theme {
@@ -53,6 +67,11 @@ interface UIState {
   openParamDialog: (elementId: string) => void;
   closeParamDialog: () => void;
 
+  /** Styled confirm/prompt modal (see dialog.ts helpers). */
+  dialog: DialogRequest | null;
+  openDialog: (req: DialogRequest) => void;
+  closeDialog: () => void;
+
   theme: Theme;
   toggleTheme: () => void;
 }
@@ -83,6 +102,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   paramDialogId: null,
   openParamDialog: (elementId) => set({ paramDialogId: elementId }),
   closeParamDialog: () => set({ paramDialogId: null }),
+
+  dialog: null,
+  openDialog: (req) => set({ dialog: req }),
+  closeDialog: () => set({ dialog: null }),
 
   theme: initialTheme,
   toggleTheme: () => {

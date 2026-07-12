@@ -101,6 +101,7 @@ export function CasePanel() {
   const activeCaseId = useProjectStore((s) => s.activeCaseId);
   const running = useProjectStore((s) => s.running);
   const setActiveCase = useProjectStore((s) => s.setActiveCase);
+  const setCaseField = useProjectStore((s) => s.setCaseField);
   const setCaseOverride = useProjectStore((s) => s.setCaseOverride);
   const clearCaseOverride = useProjectStore((s) => s.clearCaseOverride);
   const run = useProjectStore((s) => s.run);
@@ -220,6 +221,80 @@ export function CasePanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {/* -- case settings ------------------------------------------------ */}
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--ss-text-dim)]">
+          Case settings
+        </div>
+        <div className="mb-4 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded bg-[color:var(--ss-panel-alt)] p-2">
+          <label className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--ss-text-dim)]">
+            Duration (s)
+            <input
+              type="number"
+              className="ss-input w-[80px]"
+              min={1}
+              value={activeCase.duration}
+              onChange={(e) =>
+                setCaseField(activeCase.id, { duration: Number(e.target.value) || 1 })
+              }
+            />
+          </label>
+          <label
+            className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--ss-text-dim)]"
+            title="Solver step in seconds (min 0.0001). Signals & control blocks evaluate here; mechanics sub-step to ≤10 ms internally."
+          >
+            Step (s)
+            <input
+              type="number"
+              className="ss-input w-[80px]"
+              step="any"
+              min={0.0001}
+              value={activeCase.timeStep}
+              onChange={(e) =>
+                setCaseField(activeCase.id, {
+                  timeStep: Math.max(0.0001, Number(e.target.value) || 1),
+                })
+              }
+            />
+          </label>
+          <label
+            className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--ss-text-dim)]"
+            title="Record a result point every N solver steps (1 = every step). Keeps results small at fine step sizes."
+          >
+            Store every (steps)
+            <input
+              type="number"
+              className="ss-input w-[80px]"
+              min={1}
+              step={1}
+              value={activeCase.outputEvery ?? 1}
+              onChange={(e) =>
+                setCaseField(activeCase.id, {
+                  outputEvery: Math.max(1, Math.round(Number(e.target.value) || 1)),
+                })
+              }
+            />
+          </label>
+          <label
+            className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--ss-text-dim)]"
+            title="0 = solve as fast as possible; N× paces the run against real time so you can watch and tune it live."
+          >
+            Pacing
+            <select
+              className="ss-input w-[80px]"
+              value={activeCase.realtimeFactor ?? 0}
+              onChange={(e) =>
+                setCaseField(activeCase.id, { realtimeFactor: Number(e.target.value) })
+              }
+            >
+              <option value={0}>Max</option>
+              <option value={1}>1×</option>
+              <option value={5}>5×</option>
+              <option value={10}>10×</option>
+              <option value={30}>30×</option>
+            </select>
+          </label>
+        </div>
+
         {/* -- per-case overrides ------------------------------------------- */}
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[color:var(--ss-text-dim)]">
           Parameter overrides · {activeCase.name}

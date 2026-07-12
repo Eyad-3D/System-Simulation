@@ -38,6 +38,7 @@ import {
   useProjectStore,
 } from "../../store/projectStore";
 import { useUIStore } from "../../store/uiStore";
+import { promptDialog } from "../../dialog";
 import type { PortKind } from "../../types";
 import { ElementNode, type ElementFlowNode } from "./ElementNode";
 
@@ -688,9 +689,15 @@ function TopologyCanvasInner() {
                   label="Rename…"
                   onClick={() => {
                     const el = system?.elements.find((e) => e.id === menu.nodeId);
-                    const name = window.prompt("Element name", el?.label ?? "");
-                    if (name != null && name.trim()) store.getState().renameElement(menu.nodeId!, name.trim());
+                    const id = menu.nodeId!;
                     closeMenu();
+                    void promptDialog({
+                      title: "Rename element",
+                      defaultValue: el?.label ?? "",
+                      confirmLabel: "Rename",
+                    }).then((name) => {
+                      if (name != null && name.trim()) store.getState().renameElement(id, name.trim());
+                    });
                   }}
                 />
                 <div className="my-1 h-px bg-[color:var(--ss-border)]" />
