@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Legend,
@@ -24,27 +24,10 @@ import {
 import { useActiveRun, useOverlayRuns, useProjectStore } from "../../store/projectStore";
 import { useUIStore } from "../../store/uiStore";
 import type { Channel, SimResult, SimRun } from "../../types";
+import { PALETTE, channelKey, decimate, useHasSize } from "./chartUtils";
 
-const PALETTE = [
-  "#2f6fb3",
-  "#d97706",
-  "#059669",
-  "#dc2626",
-  "#7c3aed",
-  "#0e7490",
-  "#be185d",
-  "#4d7c0f",
-  "#b45309",
-  "#1d4ed8",
-];
 // dash patterns to distinguish channels when several runs are overlaid at once
 const DASHES = ["", "5 3", "2 2", "7 3 2 3", "9 4"];
-
-const MAX_PLOT_POINTS = 2000;
-
-function channelKey(c: Channel): string {
-  return `${c.elementId}:${c.portId}`;
-}
 
 function runTime(r: SimRun): string {
   return new Date(r.startedAt).toLocaleTimeString([], {
@@ -63,34 +46,6 @@ function runShort(r: SimRun): string {
   if (r.sweepValue !== undefined)
     return `${r.sweepValue}${r.sweepUnit ? ` ${r.sweepUnit}` : ""}`;
   return runTime(r);
-}
-
-/** Stride-decimate a series so charts/tables stay responsive (keeps the endpoints). */
-function decimate<T>(arr: T[], max = MAX_PLOT_POINTS): T[] {
-  if (arr.length <= max) return arr;
-  const stride = Math.ceil(arr.length / max);
-  const out: T[] = [];
-  for (let i = 0; i < arr.length; i += stride) out.push(arr[i]);
-  if (out[out.length - 1] !== arr[arr.length - 1]) out.push(arr[arr.length - 1]);
-  return out;
-}
-
-/** True once the element has a real size — dockview keeps hidden tabs at 0×0,
- *  and recharts warns loudly if asked to render there. */
-function useHasSize<T extends HTMLElement>() {
-  const ref = useRef<T | null>(null);
-  const [hasSize, setHasSize] = useState(false);
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    const obs = new ResizeObserver((entries) => {
-      const r = entries[0]?.contentRect;
-      setHasSize(!!r && r.width > 0 && r.height > 0);
-    });
-    obs.observe(node);
-    return () => obs.disconnect();
-  }, []);
-  return { ref, hasSize };
 }
 
 function exportCsv(result: SimResult, keys: Set<string>, name: string) {

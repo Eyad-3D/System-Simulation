@@ -17,6 +17,7 @@ import { LayerConfigPanel } from "./panels/LayerConfigPanel";
 import { DataBusPanel } from "./panels/DataBusPanel";
 import { MonitorsPanel } from "./panels/MonitorsPanel";
 import { CasePanel } from "./panels/CasePanel";
+import { MiniChartPanel } from "./panels/MiniChartPanel";
 import { TopologyCanvas } from "./canvas/TopologyCanvas";
 
 const ssTheme: DockviewTheme = {
@@ -61,12 +62,13 @@ const components = {
   "layer-config": wrap(LayerConfigPanel),
   "data-bus": wrap(DataBusPanel),
   cases: wrap(CasePanel),
+  "mini-chart": wrap(MiniChartPanel),
 };
 
 // bump when the panel set / default arrangement changes so stale saved layouts
 // are discarded rather than restored into a broken state.
 const LAYOUT_KEY = "simstudio-layout-v1";
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 
 function buildDefaultLayout(api: DockviewReadyEvent["api"]) {
   const componentsPanel = api.addPanel({
@@ -128,10 +130,19 @@ function buildDefaultLayout(api: DockviewReadyEvent["api"]) {
     title: "Data Bus Connections",
     position: { referencePanel: "messages", direction: "within" },
   });
+  // Dockable signal plot directly beneath the canvas (own group so it is visible
+  // alongside the topology). Users can drag it elsewhere; it is a normal panel.
+  const miniChartPanel = api.addPanel({
+    id: "mini-chart",
+    component: "mini-chart",
+    title: "Signal Plot",
+    position: { referencePanel: "topology", direction: "below" },
+  });
 
   componentsPanel.api.setSize({ width: 265 });
   propertiesPanel.api.setSize({ width: 305 });
   messagesPanel.api.setSize({ height: 235 });
+  miniChartPanel.api.setSize({ height: 200 });
 
   api.getPanel("components")?.api.setActive();
   api.getPanel("messages")?.api.setActive();
