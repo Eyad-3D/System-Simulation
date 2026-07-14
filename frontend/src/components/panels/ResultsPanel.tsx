@@ -10,6 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  ChartScatter,
   Download,
   Image as ImageIcon,
   Layers,
@@ -164,9 +165,10 @@ export function ResultsPanel() {
   const selKey = activeRun?.caseId ?? "";
 
   const [selected, setSelected] = useState<Record<string, string[]>>({});
-  const [view, setView] = useState<"chart" | "table" | "sweep">("chart");
+  const [view, setView] = useState<"chart" | "table" | "sweep" | "xy">("chart");
   const [search, setSearch] = useState("");
   const [sweepMetric, setSweepMetric] = useState("");
+  const [xyXKey, setXyXKey] = useState(""); // channel used as the X axis in the X-Y view
   const { ref: chartHost, hasSize } = useHasSize<HTMLDivElement>();
 
   // sensible default channel selection the first time a case's results are shown
@@ -289,6 +291,45 @@ export function ResultsPanel() {
       return row;
     });
   }, [activeChannels]);
+
+  // --- X-Y (channel-vs-channel) plot: active run only, samples aligned by index.
+  // The left-hand checkboxes pick the channels; one of them is the X axis, the
+  // rest are plotted as Y series against it (e.g. motor torque vs. motor speed).
+  const channelByKey = useMemo(() => {
+    const m = new Map<string, Channel>();
+    for (const c of result?.channels ?? []) m.set(channelKey(c), c);
+    return m;
+  }, [result]);
+
+  // keep the chosen X channel valid as the selection changes
+  useEffect(() => {
+    if (selectedList.length === 0) {
+      if (xyXKey) setXyXKey("");
+    } else if (!selectedList.includes(xyXKey)) {
+      setXyXKey(selectedList[0]);
+    }
+  }, [selectedList, xyXKey]);
+
+  const xyXChannel = xyXKey ? (channelByKey.get(xyXKey) ?? null) : null;
+  const xyYChannels = useMemo(
+    () => activeChannels.filter((c) => channelKey(c) !== xyXKey),
+    [activeChannels, xyXKey],
+  );
+  const xyYUnits = useMemo(() => [...new Set(xyYChannels.map((c) => c.unit))], [xyYChannels]);
+  const xyXShort = xyXChannel ? (xyXChannel.label.split(" · ")[1] ?? xyXChannel.label) : "";
+  const xyData = useMemo(() => {
+    if (!xyXChannel || xyYChannels.length === 0) return [];
+    const xs = decimate(xyXChannel.timeSeries);
+    const ys = xyYChannels.map((c) => decimate(c.timeSeries));
+    return xs.map((pt, i) => {
+      const row: Record<string, number> = { x: pt.value };
+      xyYChannels.forEach((c, ci) => {
+        const p = ys[ci][i];
+        if (p) row[channelKey(c)] = p.value;
+      });
+      return row;
+    });
+  }, [xyXChannel, xyYChannels]);
 
   // sweep-summary data: chosen metric vs swept value across the family
   const sweepMetrics = useMemo(() => {
@@ -491,6 +532,8 @@ export function ResultsPanel() {
           <span className="text-[11px] text-[color:var(--ss-text-dim)]">
             {view === "sweep" ? (
               <>Sweep · {family.length} run(s)</>
+            ) : view === "xy" ? (
+              <>X-Y · {xyYChannels.length} series vs {xyXShort || "—"}</>
             ) : (
               <>
                 {selectedKeys.size} channel(s)
@@ -531,6 +574,25 @@ export function ResultsPanel() {
                 ))}
               </select>
             )}
+            {view === "xy" && selectedList.length > 0 && (
+              <select
+                className="ss-input max-w-[200px] py-0.5 text-[11px]"
+                value={xyXKey}
+                onChange={(e) => setXyXKey(e.target.value)}
+                title="Channel to plot on the X axis (the other ticked channels become Y series)"
+              >
+                {selectedList.map((k) => {
+                  const c = channelByKey.get(k);
+                  const short = c ? (c.label.split(" · ")[1] ?? c.label) : k;
+                  return (
+                    <option key={k} value={k}>
+                      X: {short}
+                      {c ? ` [${c.unit}]` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
             <div className="flex overflow-hidden rounded border border-[color:var(--ss-border)]">
               <button
                 className={`flex items-center gap-1 px-2 py-1 text-[11px] ${
@@ -549,6 +611,20 @@ export function ResultsPanel() {
                 title="Table view"
               >
                 <Table2 size={12} /> Table
+              </button>
+              <button
+                className={`flex items-center gap-1 border-l border-[color:var(--ss-border)] px-2 py-1 text-[11px] disabled:opacity-40 ${
+                  view === "xy" ? "bg-[color:var(--ss-active)] font-semibold" : "hover:bg-[color:var(--ss-hover)]"
+                }`}
+                onClick={() => setView("xy")}
+                disabled={selectedKeys.size < 2}
+                title={
+                  selectedKeys.size < 2
+                    ? "Tick at least two channels to plot one against another"
+                    : "X-Y plot: one channel against another (e.g. torque vs. speed)"
+                }
+              >
+                <ChartScatter size={12} /> X-Y
               </button>
               <button
                 className={`flex items-center gap-1 border-l border-[color:var(--ss-border)] px-2 py-1 text-[11px] disabled:opacity-40 ${
@@ -683,6 +759,92 @@ export function ResultsPanel() {
                 {family.length < 2
                   ? "Run a parameter sweep to see metric-vs-value here."
                   : "This metric has no values across the family."}
+              </div>
+            )}
+          </div>
+        ) : view === "xy" ? (
+          <div className="min-h-0 flex-[3] p-1" ref={chartHost}>
+            {xyData.length > 0 && hasSize ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={xyData} margin={{ top: 8, right: 16, bottom: 18, left: 4 }}>
+                  <CartesianGrid stroke={theme === "dark" ? "#2a2f37" : "#eceff3"} />
+                  <XAxis
+                    dataKey="x"
+                    type="number"
+                    domain={["dataMin", "dataMax"]}
+                    tick={{ fontSize: 10 }}
+                    label={{
+                      value: `${xyXShort}${xyXChannel?.unit ? ` [${xyXChannel.unit}]` : ""}`,
+                      position: "insideBottom",
+                      offset: -8,
+                      fontSize: 11,
+                    }}
+                  />
+                  {xyYUnits.map((u, i) => (
+                    <YAxis
+                      key={u}
+                      yAxisId={u}
+                      orientation={i % 2 === 0 ? "left" : "right"}
+                      tick={{ fontSize: 10 }}
+                      width={46}
+                      label={{
+                        value: u,
+                        angle: -90,
+                        position: i % 2 === 0 ? "insideLeft" : "insideRight",
+                        fontSize: 10,
+                        style: { textAnchor: "middle" },
+                      }}
+                    />
+                  ))}
+                  <Tooltip
+                    cursor={{ stroke: "var(--ss-accent)", strokeWidth: 1, strokeDasharray: "3 3" }}
+                    contentStyle={{
+                      fontSize: 11,
+                      background: "var(--ss-panel)",
+                      border: "1px solid var(--ss-border)",
+                      color: "var(--ss-text)",
+                    }}
+                    labelFormatter={(x) =>
+                      `${xyXShort} = ${typeof x === "number" ? x.toLocaleString(undefined, { maximumFractionDigits: 3 }) : x}${xyXChannel?.unit ? ` ${xyXChannel.unit}` : ""}`
+                    }
+                    formatter={(value, name) => {
+                      const c = channelByKey.get(String(name));
+                      const v =
+                        typeof value === "number"
+                          ? value.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                          : String(value ?? "");
+                      return [`${v} ${c?.unit ?? ""}`, c ? (c.label.split(" · ")[1] ?? c.label) : String(name)];
+                    }}
+                  />
+                  <Legend
+                    formatter={(key: string) => {
+                      const c = channelByKey.get(key);
+                      return <span style={{ fontSize: 10 }}>{c ? (c.label.split(" · ")[1] ?? c.label) : key}</span>;
+                    }}
+                  />
+                  {xyYChannels.map((c) => {
+                    const key = channelKey(c);
+                    return (
+                      <Line
+                        key={key}
+                        yAxisId={c.unit}
+                        dataKey={key}
+                        type="linear"
+                        dot={false}
+                        strokeWidth={1.6}
+                        stroke={channelColor(key)}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                    );
+                  })}
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center px-4 text-center text-[12px] text-[color:var(--ss-text-dim)]">
+                {selectedKeys.size < 2
+                  ? "Tick at least two channels on the left — one becomes the X axis, the rest are plotted against it."
+                  : "No samples to plot for this pair."}
               </div>
             )}
           </div>
