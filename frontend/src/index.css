@@ -51,6 +51,13 @@ body,
   -webkit-font-smoothing: antialiased;
 }
 
+/* Font-size / UI-scale setting: magnifies chrome and panel content. Applied
+   only to regions tagged .ss-zoom (never the topology canvas, whose React Flow
+   pointer math assumes an unscaled ancestor — see uiStore/DockLayout). */
+.ss-zoom {
+  zoom: var(--ss-ui-scale, 1);
+}
+
 /* ---- scrollbars (dense engineering-tool look) ---- */
 *::-webkit-scrollbar {
   width: 10px;
@@ -87,7 +94,7 @@ body,
   --dv-separator-border: var(--ss-border);
   --dv-paneview-header-border-color: var(--ss-border);
   --dv-group-view-background-color: var(--ss-panel);
-  --dv-tabs-and-actions-container-height: 30px;
+  --dv-tabs-and-actions-container-height: 34px;
   --dv-tabs-and-actions-container-font-size: 12px;
   --dv-drag-over-background-color: rgba(47, 111, 179, 0.18);
   --dv-drag-over-border-color: var(--ss-accent);
@@ -98,9 +105,21 @@ body,
 }
 .dockview-theme-ss .dv-tab {
   border-top: 2px solid transparent;
+  /* larger hit target for the panel tabs */
+  padding: 0 10px;
 }
 .dockview-theme-ss .dv-tab.dv-active-tab {
   border-top: 2px solid var(--ss-accent);
+}
+/* keep keyboard focus visible on tabs (a11y) */
+.dockview-theme-ss .dv-tab:focus-visible {
+  outline: 2px solid var(--ss-accent);
+  outline-offset: -2px;
+}
+/* comfortable hit area for the tab close button */
+.dockview-theme-ss .dv-tab .dv-default-tab-action {
+  padding: 3px;
+  border-radius: 3px;
 }
 
 /* ---- React Flow tuning ---- */
@@ -154,7 +173,11 @@ body,
 
 /* ---- shared widget styles ---- */
 .ss-toolbtn {
-  @apply flex items-center gap-1 rounded px-1.5 py-1 text-[12px] text-[color:var(--ss-text)] hover:bg-[color:var(--ss-hover)] active:bg-[color:var(--ss-active)] disabled:opacity-40 disabled:hover:bg-transparent;
+  @apply flex min-h-[27px] items-center justify-center gap-1 rounded px-2 py-1 text-[12px] text-[color:var(--ss-text)] hover:bg-[color:var(--ss-hover)] active:bg-[color:var(--ss-active)] disabled:opacity-40 disabled:hover:bg-transparent;
+}
+.ss-toolbtn:focus-visible {
+  outline: 2px solid var(--ss-accent);
+  outline-offset: -2px;
 }
 .ss-input {
   @apply rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] px-1.5 py-0.5 text-[12px] text-[color:var(--ss-text)] outline-none focus:border-[color:var(--ss-accent)];

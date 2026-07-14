@@ -60,7 +60,9 @@ export async function fetchDemoProject(): Promise<{
   }
 }
 
-export function listProjects(): Promise<{ id: string; name: string }[]> {
+export function listProjects(): Promise<
+  { id: string; name: string; description?: string | null }[]
+> {
   return request("/projects");
 }
 

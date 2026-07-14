@@ -16,7 +16,7 @@ export function StatusBar() {
     project?.systems.reduce((n, s) => n + s.elements.length, 0) ?? 0;
 
   return (
-    <div className="flex h-[26px] shrink-0 items-center border-t border-[color:var(--ss-border)] bg-[color:var(--ss-chrome)] text-[11px]">
+    <div className="ss-zoom flex h-[26px] shrink-0 items-center border-t border-[color:var(--ss-border)] bg-[color:var(--ss-chrome)] text-[11px]">
       <div className="flex h-full items-end gap-0.5 px-1.5">
         {project && (
           <div className="flex h-[22px] items-center gap-2 rounded-t border border-b-0 border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] px-3 font-medium">

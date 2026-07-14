@@ -24,11 +24,14 @@ import {
   Magnet,
   Map,
   Maximize,
+  MousePointerClick,
+  PackagePlus,
   Pencil,
   Redo2,
   Settings2,
   Trash2,
   Undo2,
+  Waypoints,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -660,8 +663,27 @@ function TopologyCanvasInner() {
           )}
         </ReactFlow>
         {system && system.elements.length === 0 && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-[color:var(--ss-text-dim)]">
-            Drag components from the library onto the canvas to build the topology.
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <div className="max-w-[340px] rounded-lg border border-dashed border-[color:var(--ss-border)] bg-[color:var(--ss-panel)]/70 px-6 py-5 text-center">
+              <PackagePlus size={30} className="mx-auto text-[color:var(--ss-accent)]" />
+              <div className="mt-2 text-[13px] font-semibold text-[color:var(--ss-text)]">
+                Build your topology
+              </div>
+              <p className="mt-1 text-[12px] leading-relaxed text-[color:var(--ss-text-dim)]">
+                Drag components from the <span className="font-medium">Components</span> panel onto
+                the canvas, then wire matching ports together.
+              </p>
+              <ul className="mt-3 space-y-1 text-left text-[11px] text-[color:var(--ss-text-dim)]">
+                <li className="flex items-center gap-1.5">
+                  <MousePointerClick size={12} className="shrink-0" />
+                  Double-click a node to edit its parameters
+                </li>
+                <li className="flex items-center gap-1.5">
+                  <Waypoints size={12} className="shrink-0" />
+                  Drag port to port to connect (same domain only)
+                </li>
+              </ul>
+            </div>
           </div>
         )}
         {menu && (

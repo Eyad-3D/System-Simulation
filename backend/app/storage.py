@@ -26,7 +26,11 @@ def list_projects() -> list[dict]:
     for f in sorted(PROJECTS_DIR.glob("*.json")):
         try:
             raw = json.loads(f.read_text(encoding="utf-8"))
-            out.append({"id": raw.get("id", f.stem), "name": raw.get("name", f.stem)})
+            out.append({
+                "id": raw.get("id", f.stem),
+                "name": raw.get("name", f.stem),
+                "description": raw.get("description"),
+            })
         except (json.JSONDecodeError, OSError):
             continue
     return out

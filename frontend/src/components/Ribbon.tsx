@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  AArrowDown,
+  AArrowUp,
   CheckCircle2,
   Copy,
   Download,
@@ -26,7 +28,13 @@ import * as api from "../api";
 import { resetDockLayout } from "./DockLayout";
 import { confirmDialog } from "../dialog";
 import { useProjectStore } from "../store/projectStore";
-import { useUIStore, type RibbonTab } from "../store/uiStore";
+import {
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  FONT_SCALE_STEP,
+  useUIStore,
+  type RibbonTab,
+} from "../store/uiStore";
 
 // Optimization is not implemented yet — kept out of the ribbon (its RibbonTab
 // id/stub render remain) until it ships as a real feature. Parameters is real
@@ -82,7 +90,9 @@ function BigButton({
 
 function OpenProjectButton() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<{ id: string; name: string }[]>([]);
+  const [items, setItems] = useState<
+    { id: string; name: string; description?: string | null }[]
+  >([]);
   const ref = useRef<HTMLDivElement>(null);
   const openProject = useProjectStore((s) => s.openProject);
   const log = useProjectStore((s) => s.log);
@@ -114,7 +124,14 @@ function OpenProjectButton() {
         }}
       />
       {open && (
-        <div className="absolute left-0 top-[54px] z-50 min-w-[220px] rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] py-1 shadow-lg">
+        <div
+          role="menu"
+          aria-label="Open project"
+          className="absolute left-0 top-[54px] z-50 max-h-[60vh] w-[320px] overflow-auto rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)] py-1 shadow-lg"
+        >
+          <div className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--ss-text-dim)]">
+            Example & saved projects
+          </div>
           {items.length === 0 && (
             <div className="px-3 py-1.5 text-[12px] text-[color:var(--ss-text-dim)]">
               No projects on server
@@ -123,14 +140,22 @@ function OpenProjectButton() {
           {items.map((p) => (
             <button
               key={p.id}
-              className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[color:var(--ss-accent-soft)]"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left hover:bg-[color:var(--ss-accent-soft)]"
               onClick={() => {
                 setOpen(false);
                 void openProject(p.id);
               }}
             >
-              {p.name}
-              <span className="ml-2 text-[10px] text-[color:var(--ss-text-dim)]">{p.id}</span>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[12px] font-medium text-[color:var(--ss-text)]">{p.name}</span>
+                <span className="shrink-0 text-[10px] text-[color:var(--ss-text-dim)]">{p.id}</span>
+              </div>
+              {p.description && (
+                <p className="mt-0.5 text-[11px] leading-snug text-[color:var(--ss-text-dim)]">
+                  {p.description}
+                </p>
+              )}
             </button>
           ))}
         </div>
@@ -457,6 +482,44 @@ function GlobalRunControl() {
   );
 }
 
+/** Interface font-size / UI-scale stepper. Applies CSS zoom to chrome + panels
+ *  (never the canvas); the click-to-reset readout doubles as the value display. */
+function FontSizeControl() {
+  const fontScale = useUIStore((s) => s.fontScale);
+  const nudge = useUIStore((s) => s.nudgeFontScale);
+  const setScale = useUIStore((s) => s.setFontScale);
+  return (
+    <div className="flex items-center" role="group" aria-label="Interface font size">
+      <button
+        className="rounded p-1 hover:bg-[color:var(--ss-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
+        title="Decrease interface size"
+        aria-label="Decrease interface size"
+        disabled={fontScale <= FONT_SCALE_MIN + 1e-6}
+        onClick={() => nudge(-FONT_SCALE_STEP)}
+      >
+        <AArrowDown size={14} />
+      </button>
+      <button
+        className="min-w-[38px] rounded px-1 py-0.5 text-center text-[11px] tabular-nums hover:bg-[color:var(--ss-hover)]"
+        title="Reset interface size to 100%"
+        aria-label={`Interface size ${Math.round(fontScale * 100)} percent. Activate to reset to 100 percent.`}
+        onClick={() => setScale(1)}
+      >
+        {Math.round(fontScale * 100)}%
+      </button>
+      <button
+        className="rounded p-1 hover:bg-[color:var(--ss-hover)] disabled:opacity-40 disabled:hover:bg-transparent"
+        title="Increase interface size"
+        aria-label="Increase interface size"
+        disabled={fontScale >= FONT_SCALE_MAX - 1e-6}
+        onClick={() => nudge(FONT_SCALE_STEP)}
+      >
+        <AArrowUp size={14} />
+      </button>
+    </div>
+  );
+}
+
 export function Ribbon() {
   const tab = useUIStore((s) => s.ribbonTab);
   const setTab = useUIStore((s) => s.setRibbonTab);
@@ -466,7 +529,7 @@ export function Ribbon() {
   const dirty = useProjectStore((s) => s.dirty);
 
   return (
-    <div className="shrink-0 border-b border-[color:var(--ss-border)] bg-[color:var(--ss-chrome)]">
+    <div className="ss-zoom shrink-0 border-b border-[color:var(--ss-border)] bg-[color:var(--ss-chrome)]">
       <div className="flex items-center gap-1 px-2 pt-1">
         <div className="mr-1 flex items-center gap-1.5 rounded bg-[color:var(--ss-accent)] px-2 py-0.5 text-[12px] font-semibold text-white">
           SimStudio
@@ -491,9 +554,12 @@ export function Ribbon() {
             {projectName}
             {dirty ? " •" : ""}
           </span>
+          <div className="h-4 w-px bg-[color:var(--ss-border)]" />
+          <FontSizeControl />
           <button
             className="rounded p-1 hover:bg-[color:var(--ss-hover)]"
             title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             onClick={toggleTheme}
           >
             {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}

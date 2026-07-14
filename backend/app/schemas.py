@@ -122,6 +122,9 @@ class SimCase(BaseModel):
 class Project(BaseModel):
     id: str
     name: str
+    # Short human-readable summary, shown in the Open menu so example projects
+    # are self-describing. Optional — user-created projects usually omit it.
+    description: str | None = None
     systems: list[SystemNode]
     dataBusConnections: list[DataBusConnection] = Field(default_factory=list)
     cases: list[SimCase] = Field(default_factory=list)

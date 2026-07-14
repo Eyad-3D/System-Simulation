@@ -1,8 +1,10 @@
 import {
+  DockviewDefaultTab,
   DockviewReact,
   themeLight,
   type DockviewReadyEvent,
   type DockviewTheme,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview-react";
 import { useUIStore } from "../store/uiStore";
@@ -23,21 +25,35 @@ const ssTheme: DockviewTheme = {
   className: `${themeLight.className} dockview-theme-ss`,
 };
 
+// `zoom: false` opts a panel out of the font-size/UI-scale magnification. Only
+// the topology canvas does so — React Flow's pointer math assumes an unscaled
+// ancestor (CSS zoom would offset drags); every other panel scales via .ss-zoom.
 const wrap =
-  (Component: React.ComponentType) =>
+  (Component: React.ComponentType, opts: { zoom?: boolean } = {}) =>
   // eslint-disable-next-line react/display-name
   (_props: IDockviewPanelProps) => (
-    <div className="h-full w-full overflow-hidden bg-[color:var(--ss-panel)]">
+    <div
+      className={`h-full w-full overflow-hidden bg-[color:var(--ss-panel)]${
+        opts.zoom === false ? "" : " ss-zoom"
+      }`}
+    >
       <Component />
     </div>
   );
+
+// Accessible panel tabs: the default dockview tab is a plain div with no role or
+// discernible name. Wrap it so assistive tech announces each tab by its title.
+function SsTab(props: IDockviewPanelHeaderProps) {
+  const title = props.api.title ?? "";
+  return <DockviewDefaultTab {...props} role="tab" aria-label={title} title={title} />;
+}
 
 // Results has its own full-page workspace (Results ribbon tab), so it is not
 // registered as a dock panel here.
 const components = {
   components: wrap(ComponentsPanel),
   elements: wrap(ElementsPanel),
-  topology: wrap(TopologyCanvas),
+  topology: wrap(TopologyCanvas, { zoom: false }),
   monitors: wrap(MonitorsPanel),
   properties: wrap(PropertiesPanel),
   messages: wrap(MessagesPanel),
@@ -181,10 +197,13 @@ function onReady(event: DockviewReadyEvent) {
 
 export function DockLayout() {
   return (
-    <DockviewReact
-      components={components}
-      onReady={onReady}
-      theme={ssTheme}
-    />
+    <div className="h-full w-full" role="region" aria-label="Model workspace panels">
+      <DockviewReact
+        components={components}
+        defaultTabComponent={SsTab}
+        onReady={onReady}
+        theme={ssTheme}
+      />
+    </div>
   );
 }

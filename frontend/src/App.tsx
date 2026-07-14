@@ -99,7 +99,7 @@ export default function App() {
               <DockLayout />
             </div>
             {onResultsPage && (
-              <div className="absolute inset-1 overflow-hidden rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)]">
+              <div className="ss-zoom absolute inset-1 overflow-hidden rounded border border-[color:var(--ss-border)] bg-[color:var(--ss-panel)]">
                 <ResultsPanel />
               </div>
             )}

@@ -123,6 +123,8 @@ export interface SimCase {
 export interface Project {
   id: string;
   name: string;
+  /** Short human-readable summary (example projects set this; usually omitted). */
+  description?: string | null;
   systems: SystemNode[];
   dataBusConnections: DataBusConnection[];
   cases: SimCase[];

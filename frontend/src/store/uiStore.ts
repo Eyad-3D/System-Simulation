@@ -30,6 +30,13 @@ export interface DialogRequest {
 }
 
 const THEME_KEY = "simstudio-theme";
+const FONT_SCALE_KEY = "simstudio-font-scale";
+
+/** UI scale steps for the font-size setting. Applied as CSS `zoom` on the
+ *  chrome/panels (never the canvas — see index.css / DockLayout). */
+export const FONT_SCALE_MIN = 0.85;
+export const FONT_SCALE_MAX = 1.4;
+export const FONT_SCALE_STEP = 0.1;
 
 function loadTheme(): Theme {
   try {
@@ -43,6 +50,25 @@ function loadTheme(): Theme {
 
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
+function clampScale(n: number): number {
+  const v = Math.round(n * 100) / 100;
+  return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v));
+}
+
+function loadFontScale(): number {
+  try {
+    const saved = Number(window.localStorage.getItem(FONT_SCALE_KEY));
+    if (Number.isFinite(saved) && saved > 0) return clampScale(saved);
+  } catch {
+    /* storage unavailable */
+  }
+  return 1;
+}
+
+function applyFontScale(scale: number) {
+  document.documentElement.style.setProperty("--ss-ui-scale", String(scale));
 }
 
 interface UIState {
@@ -74,10 +100,17 @@ interface UIState {
 
   theme: Theme;
   toggleTheme: () => void;
+
+  /** UI/font scale (CSS zoom on chrome + panels). 1 = default. */
+  fontScale: number;
+  setFontScale: (scale: number) => void;
+  nudgeFontScale: (delta: number) => void;
 }
 
 const initialTheme = loadTheme();
 applyTheme(initialTheme);
+const initialFontScale = loadFontScale();
+applyFontScale(initialFontScale);
 
 export const useUIStore = create<UIState>((set, get) => ({
   ribbonTab: "home",
@@ -118,4 +151,17 @@ export const useUIStore = create<UIState>((set, get) => ({
     }
     set({ theme: next });
   },
+
+  fontScale: initialFontScale,
+  setFontScale: (scale) => {
+    const next = clampScale(scale);
+    applyFontScale(next);
+    try {
+      window.localStorage.setItem(FONT_SCALE_KEY, String(next));
+    } catch {
+      /* storage unavailable */
+    }
+    set({ fontScale: next });
+  },
+  nudgeFontScale: (delta) => get().setFontScale(get().fontScale + delta),
 }));
