@@ -42,6 +42,9 @@ export interface ParameterDef {
   options?: string[];
   /** table1d: one axis; table2d: [outer, inner]. */
   axes?: AxisDef[];
+  /** FMI-style variability: "fixed" params are baked in at model build (live
+   *  edits take effect on the next run); "tunable" (default) apply live. */
+  variability?: "fixed" | "tunable";
 }
 
 export interface ComponentDef {

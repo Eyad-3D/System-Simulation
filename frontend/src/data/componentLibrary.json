@@ -48,6 +48,7 @@
       "parameters": [
         {
           "key": "mass_kg",
+          "variability": "fixed",
           "label": "Vehicle Mass",
           "unit": "kg",
           "default": 1800,
@@ -69,6 +70,7 @@
         },
         {
           "key": "initial_speed_kmh",
+          "variability": "fixed",
           "label": "Initial Speed",
           "unit": "km/h",
           "default": 0,
@@ -209,6 +211,7 @@
       "parameters": [
         {
           "key": "capacity_kWh",
+          "variability": "fixed",
           "label": "Usable Capacity",
           "unit": "kWh",
           "default": 60,
@@ -240,6 +243,7 @@
         },
         {
           "key": "rc_resistance_ohm",
+          "variability": "fixed",
           "label": "RC Pair Resistance R1",
           "unit": "Ω",
           "default": 0,
@@ -247,6 +251,7 @@
         },
         {
           "key": "rc_time_constant_s",
+          "variability": "fixed",
           "label": "RC Pair Time Constant",
           "unit": "s",
           "default": 0,
@@ -261,6 +266,7 @@
         },
         {
           "key": "initial_soc_pct",
+          "variability": "fixed",
           "label": "Initial SOC",
           "unit": "%",
           "default": 90,
@@ -452,6 +458,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Rotor Inertia",
           "unit": "kg·m²",
           "default": 0.045,
@@ -793,6 +800,7 @@
       "parameters": [
         {
           "key": "efficiency_pct",
+          "variability": "fixed",
           "label": "Mechanical Efficiency",
           "unit": "%",
           "default": 100,
@@ -800,6 +808,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 0.01,
@@ -849,6 +858,7 @@
       "parameters": [
         {
           "key": "ratio",
+          "variability": "fixed",
           "label": "Transmission Ratio",
           "unit": "-",
           "default": 9.7,
@@ -856,6 +866,7 @@
         },
         {
           "key": "inertia_in_kgm2",
+          "variability": "fixed",
           "label": "Moment of Inertia In",
           "unit": "kg·m²",
           "default": 0.01,
@@ -863,6 +874,7 @@
         },
         {
           "key": "inertia_out_kgm2",
+          "variability": "fixed",
           "label": "Moment of Inertia Out",
           "unit": "kg·m²",
           "default": 0.02,
@@ -870,6 +882,7 @@
         },
         {
           "key": "efficiency_pct",
+          "variability": "fixed",
           "label": "Efficiency",
           "unit": "%",
           "default": 97,
@@ -941,6 +954,7 @@
         },
         {
           "key": "ratio",
+          "variability": "fixed",
           "label": "Ratio",
           "unit": "-",
           "default": 1.0,
@@ -948,6 +962,7 @@
         },
         {
           "key": "efficiency_pct",
+          "variability": "fixed",
           "label": "Efficiency",
           "unit": "%",
           "default": 98,
@@ -955,6 +970,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 0.015,
@@ -1060,6 +1076,7 @@
       "parameters": [
         {
           "key": "radius_m",
+          "variability": "fixed",
           "label": "Wheel Radius",
           "unit": "m",
           "default": 0.33,
@@ -1067,6 +1084,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 1.2,
@@ -1143,6 +1161,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 0.6,
@@ -1184,6 +1203,7 @@
       "parameters": [
         {
           "key": "torque_ref_Nm",
+          "variability": "fixed",
           "label": "Torque at Reference Speed",
           "unit": "N·m",
           "default": 500,
@@ -1191,6 +1211,7 @@
         },
         {
           "key": "ref_speed_rpm",
+          "variability": "fixed",
           "label": "Reference Speed",
           "unit": "1/min",
           "default": 2000,
@@ -1198,6 +1219,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 2.5,
@@ -1283,6 +1305,7 @@
       "parameters": [
         {
           "key": "code",
+          "variability": "fixed",
           "label": "Python Code",
           "unit": "-",
           "type": "code",
@@ -1469,6 +1492,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 0.18,
@@ -1502,6 +1526,7 @@
       "parameters": [
         {
           "key": "capacity_kg",
+          "variability": "fixed",
           "label": "Capacity",
           "unit": "kg",
           "default": 45,
@@ -1509,6 +1534,7 @@
         },
         {
           "key": "initial_fill_pct",
+          "variability": "fixed",
           "label": "Initial Fill",
           "unit": "%",
           "default": 90,
@@ -1572,6 +1598,7 @@
       "parameters": [
         {
           "key": "ratios",
+          "variability": "fixed",
           "label": "Gear Ratios",
           "unit": "-",
           "type": "table1d",
@@ -1587,6 +1614,7 @@
         },
         {
           "key": "default_gear",
+          "variability": "fixed",
           "label": "Default Gear",
           "unit": "-",
           "default": 1,
@@ -1594,6 +1622,7 @@
         },
         {
           "key": "efficiency_pct",
+          "variability": "fixed",
           "label": "Efficiency",
           "unit": "%",
           "default": 97,
@@ -1601,6 +1630,7 @@
         },
         {
           "key": "inertia_in_kgm2",
+          "variability": "fixed",
           "label": "Moment of Inertia In",
           "unit": "kg·m²",
           "default": 0.015,
@@ -1608,6 +1638,7 @@
         },
         {
           "key": "inertia_out_kgm2",
+          "variability": "fixed",
           "label": "Moment of Inertia Out",
           "unit": "kg·m²",
           "default": 0.02,
@@ -1735,6 +1766,7 @@
         },
         {
           "key": "torque_split_a_pct",
+          "variability": "fixed",
           "label": "Torque Split to Output A",
           "unit": "%",
           "default": 50,
@@ -1742,6 +1774,7 @@
         },
         {
           "key": "ratio",
+          "variability": "fixed",
           "label": "Ratio",
           "unit": "-",
           "default": 1.0,
@@ -1749,6 +1782,7 @@
         },
         {
           "key": "efficiency_pct",
+          "variability": "fixed",
           "label": "Efficiency",
           "unit": "%",
           "default": 98,
@@ -1756,6 +1790,7 @@
         },
         {
           "key": "inertia_kgm2",
+          "variability": "fixed",
           "label": "Inertia",
           "unit": "kg·m²",
           "default": 0.02,
@@ -1879,6 +1914,7 @@
       "parameters": [
         {
           "key": "capacity_kg",
+          "variability": "fixed",
           "label": "Capacity",
           "unit": "kg",
           "default": 5,
@@ -1886,6 +1922,7 @@
         },
         {
           "key": "initial_fill_pct",
+          "variability": "fixed",
           "label": "Initial Fill",
           "unit": "%",
           "default": 95,
@@ -1972,6 +2009,7 @@
         },
         {
           "key": "table_1d",
+          "variability": "fixed",
           "label": "1D Table",
           "unit": "-",
           "type": "table1d",
@@ -1980,6 +2018,7 @@
         },
         {
           "key": "table_2d",
+          "variability": "fixed",
           "label": "2D Table",
           "unit": "-",
           "type": "table2d",

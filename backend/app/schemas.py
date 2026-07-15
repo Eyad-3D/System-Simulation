@@ -47,6 +47,9 @@ class ParameterDef(BaseModel):
     options: Optional[list[str]] = None
     # table1d: exactly one axis; table2d: [outer, inner] axes.
     axes: Optional[list[AxisDef]] = None
+    # FMI-style variability: "fixed" parameters are baked in at model build
+    # (a live edit takes effect on the next run); "tunable" ones apply live.
+    variability: Literal["fixed", "tunable"] = "tunable"
 
 
 class ComponentDef(BaseModel):

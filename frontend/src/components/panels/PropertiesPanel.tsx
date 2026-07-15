@@ -613,7 +613,17 @@ export function ElementForm({
           <tbody>
             {scalarParams.map((p) => (
               <tr key={p.key}>
-                <td className="ss-td text-[11px]">{p.label}</td>
+                <td className="ss-td text-[11px]">
+                  {p.label}
+                  {running && p.variability === "fixed" && (
+                    <span
+                      className="ml-1 text-[10px] italic text-[color:var(--ss-text-dim)]"
+                      title="Structural parameter — a live edit takes effect on the next run"
+                    >
+                      (next run)
+                    </span>
+                  )}
+                </td>
                 <td className="ss-td">
                   <ParameterInput
                     def={p}

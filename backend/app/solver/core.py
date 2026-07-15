@@ -48,14 +48,6 @@ W_EPS = 0.5  # rad/s — static/dynamic brake threshold
 CLUTCH_BAND = 0.5  # rad/s — smooth Coulomb band (residual slip under load)
 RPM = 60.0 / (2.0 * math.pi)
 
-# scalar parameters that only take effect on the next run when changed live
-STRUCTURAL_KEYS = {
-    "inertia_kgm2", "inertia_in_kgm2", "inertia_out_kgm2", "ratio",
-    "efficiency_pct", "initial_soc_pct", "initial_speed_kmh", "capacity_kWh",
-    "code", "default_gear", "torque_split_a_pct", "capacity_kg",
-    "initial_fill_pct",
-}
-
 EmitFn = Callable[[dict], None]
 ControlFn = Callable[[], list[dict]]
 
@@ -573,7 +565,9 @@ def simulate(
                 if any(j.el_id == el_id for j in st.dl.joints):
                     rebuild_plan(st)
             return
-        if key in STRUCTURAL_KEYS:
+        pdef = next(
+            (pp for pp in model.cdef_of[el_id].parameters if pp.key == key), None)
+        if pdef is not None and pdef.variability == "fixed":
             rt.warn_once(
                 f"live-structural:{el_id}:{key}",
                 f"'{label}.{key}' changed — structural parameters take effect on the next run.",
