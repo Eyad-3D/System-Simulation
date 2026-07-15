@@ -146,22 +146,13 @@ export interface SweepConfig {
   values: number[];
 }
 
-// mirrors the solver's unitGroup → display-unit mapping
-const UNIT_BY_GROUP: Record<string, string> = {
-  Power: "kW",
-  Voltage: "V",
-  Current: "A",
-  Velocity: "km/h",
-  Temperature: "°C",
-  Torque: "N·m",
-  "Rotational Speed": "1/min",
-  Force: "N",
-  Distance: "m",
-  "No Unit": "-",
-};
-
-/** Resolve "elementId:portId" stream keys to channel metadata client-side. */
-function channelMetaResolver(project: Project, libraryById: Record<string, ComponentDef>) {
+/** Resolve "elementId:portId" stream keys to channel metadata client-side.
+ *  Units come from the library's unitGroups map (single-sourced backend data). */
+function channelMetaResolver(
+  project: Project,
+  libraryById: Record<string, ComponentDef>,
+  unitGroups: Record<string, string>,
+) {
   const elements = new Map(project.systems.flatMap((s) => s.elements.map((e) => [e.id, e] as const)));
   return (key: string): Omit<Channel, "timeSeries"> | null => {
     const sep = key.indexOf(":");
@@ -175,7 +166,7 @@ function channelMetaResolver(project: Project, libraryById: Record<string, Compo
       def.ports.find((p) => p.id === portId) ??
       el.dynamicPorts?.find((p) => p.id === portId);
     if (!port) return null;
-    const unit = portId === "sig_soc" ? "%" : (UNIT_BY_GROUP[port.unitGroup ?? "No Unit"] ?? "-");
+    const unit = unitGroups[port.unitGroup ?? "No Unit"] ?? "-";
     return { elementId, portId, label: `${el.label} · ${port.name}`, unit };
   };
 }
@@ -188,6 +179,8 @@ let sweepAborted = false;
 interface ProjectState {
   library: ComponentDef[];
   libraryById: Record<string, ComponentDef>;
+  /** unitGroup name → display unit (from the backend catalog). */
+  unitGroups: Record<string, string>;
   offline: boolean;
   loaded: boolean;
 
@@ -306,16 +299,37 @@ interface ProjectState {
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
-  /** Apply a mutation to a deep clone of the project (optionally recording undo history). */
-  function updateProject(fn: (draft: Project) => void, recordHistory = true) {
+  // Coalesce rapid same-target edits (typing in a parameter/name field) into a
+  // single undo entry: history is recorded for the first edit of a burst only.
+  let lastEdit: { sig: string; at: number } | null = null;
+  const EDIT_COALESCE_MS = 1200;
+
+  /** Apply a mutation to a deep clone of the project (optionally recording undo
+   *  history). `editSig` identifies a coalescable edit target (e.g. one field);
+   *  consecutive edits with the same signature share one history entry. */
+  function updateProject(
+    fn: (draft: Project) => void,
+    recordHistory = true,
+    editSig?: string,
+  ) {
     const { project, past } = get();
     if (!project) return;
+    let record = recordHistory;
+    if (record && editSig) {
+      const now = Date.now();
+      if (lastEdit && lastEdit.sig === editSig && now - lastEdit.at < EDIT_COALESCE_MS) {
+        record = false;
+      }
+      lastEdit = { sig: editSig, at: now };
+    } else if (record) {
+      lastEdit = null;
+    }
     const draft = structuredClone(project);
     fn(draft);
     set({
       project: draft,
       dirty: true,
-      ...(recordHistory
+      ...(record
         ? { past: [...past.slice(-(HISTORY_LIMIT - 1)), project], future: [] }
         : {}),
     });
@@ -365,7 +379,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     // incremental result assembly: step events stream in, the store is
     // flushed at most every LIVE_FLUSH_MS so charts/monitors update live
-    const meta = channelMetaResolver(projectToRun, libraryById);
+    const meta = channelMetaResolver(projectToRun, libraryById, get().unitGroups);
     const chanByKey = new Map<string, Channel>();
     let buffer: api.StepEvent[] = [];
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -425,6 +439,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   return {
     library: [],
     libraryById: {},
+    unitGroups: {},
     offline: false,
     loaded: false,
     project: null,
@@ -457,6 +472,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({
         library: lib.components,
         libraryById,
+        unitGroups: lib.unitGroups,
         offline: lib.offline,
         loaded: true,
         project,
@@ -547,6 +563,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     beginHistory: () => {
       const { project, past } = get();
       if (!project) return;
+      lastEdit = null; // a drag/resize burst is its own history entry
       set({ past: [...past.slice(-(HISTORY_LIMIT - 1)), project], future: [] });
     },
 
@@ -630,26 +647,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     clearPendingSelection: () => set({ pendingCanvasSelection: null }),
 
     renameElement: (id, label) =>
-      updateProject((draft) => {
-        for (const s of draft.systems) {
-          const el = s.elements.find((e) => e.id === id);
-          if (el) {
-            el.label = label;
-            if (el.subSystemId) {
-              const sub = draft.systems.find((sys) => sys.id === el.subSystemId);
-              if (sub) sub.name = label;
+      updateProject(
+        (draft) => {
+          for (const s of draft.systems) {
+            const el = s.elements.find((e) => e.id === id);
+            if (el) {
+              el.label = label;
+              if (el.subSystemId) {
+                const sub = draft.systems.find((sys) => sys.id === el.subSystemId);
+                if (sub) sub.name = label;
+              }
             }
           }
-        }
-      }),
+        },
+        true,
+        `label:${id}`,
+      ),
 
     setParameter: (elementId, key, value) => {
-      updateProject((draft) => {
-        for (const s of draft.systems) {
-          const el = s.elements.find((e) => e.id === elementId);
-          if (el) el.parameterOverrides[key] = value;
-        }
-      });
+      updateProject(
+        (draft) => {
+          for (const s of draft.systems) {
+            const el = s.elements.find((e) => e.id === elementId);
+            if (el) el.parameterOverrides[key] = value;
+          }
+        },
+        true,
+        `param:${elementId}:${key}`,
+      );
       // scalar edits stream into a running simulation (tables/code apply next run)
       if (activeRun && typeof value !== "object") {
         activeRun.setParam(elementId, key, value);
@@ -821,11 +846,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }),
 
     renameSystem: (systemId, name) =>
-      updateProject((draft) => {
-        const sys = draft.systems.find((s) => s.id === systemId);
-        if (sys) sys.name = name;
-        draft.name = draft.systems.find((s) => s.parentId === null)?.name ?? draft.name;
-      }),
+      updateProject(
+        (draft) => {
+          const sys = draft.systems.find((s) => s.id === systemId);
+          if (sys) sys.name = name;
+          draft.name = draft.systems.find((s) => s.parentId === null)?.name ?? draft.name;
+        },
+        true,
+        `system:${systemId}`,
+      ),
 
     undo: () => {
       const { past, future, project } = get();
@@ -953,10 +982,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     setActiveCase: (id) => set({ activeCaseId: id }),
 
     setCaseField: (caseId, patch) =>
-      updateProject((draft) => {
-        const c = draft.cases.find((cc) => cc.id === caseId);
-        if (c) Object.assign(c, patch);
-      }),
+      updateProject(
+        (draft) => {
+          const c = draft.cases.find((cc) => cc.id === caseId);
+          if (c) Object.assign(c, patch);
+        },
+        true,
+        `case:${caseId}:${Object.keys(patch).sort().join(",")}`,
+      ),
 
     addCase: () => {
       const id = uid("case");
@@ -998,13 +1031,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     setCaseOverride: (caseId, elementId, key, value) =>
-      updateProject((draft) => {
-        const c = draft.cases.find((cc) => cc.id === caseId);
-        if (!c) return;
-        const ov = { ...(c.parameterOverrides ?? {}) };
-        ov[elementId] = { ...(ov[elementId] ?? {}), [key]: value };
-        c.parameterOverrides = ov;
-      }),
+      updateProject(
+        (draft) => {
+          const c = draft.cases.find((cc) => cc.id === caseId);
+          if (!c) return;
+          const ov = { ...(c.parameterOverrides ?? {}) };
+          ov[elementId] = { ...(ov[elementId] ?? {}), [key]: value };
+          c.parameterOverrides = ov;
+        },
+        true,
+        `caseov:${caseId}:${elementId}:${key}`,
+      ),
 
     clearCaseOverride: (caseId, elementId, key) =>
       updateProject((draft) => {

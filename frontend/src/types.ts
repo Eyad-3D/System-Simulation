@@ -123,6 +123,8 @@ export interface SimCase {
 export interface Project {
   id: string;
   name: string;
+  /** Project-file format version (files from before versioning are v1). */
+  schemaVersion?: number;
   /** Short human-readable summary (example projects set this; usually omitted). */
   description?: string | null;
   systems: SystemNode[];
@@ -140,7 +142,8 @@ export interface Channel {
   portId: string;
   label: string;
   unit: string;
-  timeSeries: { t: number; value: number }[];
+  /** value is null where the channel has no data yet (a gap, not a zero). */
+  timeSeries: { t: number; value: number | null }[];
 }
 
 export interface SummaryValue {

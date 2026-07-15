@@ -1,5 +1,6 @@
 {
   "id": "hybrid-car",
+  "schemaVersion": 1,
   "name": "P2 Hybrid Car",
   "description": "P2 parallel hybrid: engine and e-motor share a clutch-coupled driveline with a battery and control logic, showing multi-domain power blending.",
   "systems": [

@@ -103,6 +103,11 @@ def validate_project(project: Project) -> list[DataCheck]:
                     f"Connection between '{all_elements[conn.sourceElementId].label}' and "
                     f"'{all_elements[conn.targetElementId].label}' mixes incompatible port "
                     f"kinds ({pa.kind} ↔ {pb.kind}).")
+            elif pa and pb and pa.kind == pb.kind and pa.kind in ("thermal", "fluid"):
+                add("warning",
+                    f"Connection between '{all_elements[conn.sourceElementId].label}' and "
+                    f"'{all_elements[conn.targetElementId].label}' is a {pa.kind} connection — "
+                    f"this version has no {pa.kind} solver, so it is ignored during simulation.")
 
     for dbc in project.dataBusConnections:
         p1 = port_of(dbc.element1Id, dbc.port1Id)

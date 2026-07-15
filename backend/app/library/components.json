@@ -1,4 +1,19 @@
 {
+  "unitGroups": {
+    "Power": "kW",
+    "Voltage": "V",
+    "Current": "A",
+    "Velocity": "km/h",
+    "Temperature": "°C",
+    "Torque": "N·m",
+    "Rotational Speed": "1/min",
+    "Force": "N",
+    "Distance": "m",
+    "Mass": "kg",
+    "Mass Flow": "kg/h",
+    "Percent": "%",
+    "No Unit": "-"
+  },
   "components": [
     {
       "id": "vehicle.body",
@@ -167,7 +182,7 @@
           "name": "SOC",
           "direction": "output",
           "kind": "signal",
-          "unitGroup": "No Unit"
+          "unitGroup": "Percent"
         },
         {
           "id": "sig_voltage",
@@ -1474,7 +1489,7 @@
           "name": "Fill Level",
           "direction": "output",
           "kind": "signal",
-          "unitGroup": "No Unit"
+          "unitGroup": "Percent"
         },
         {
           "id": "sig_mass",
@@ -1497,6 +1512,13 @@
           "label": "Initial Fill",
           "unit": "%",
           "default": 90,
+          "type": "number"
+        },
+        {
+          "key": "density_kg_per_l",
+          "label": "Fuel Density",
+          "unit": "kg/l",
+          "default": 0.745,
           "type": "number"
         }
       ]
@@ -1844,7 +1866,7 @@
           "name": "Fill Level",
           "direction": "output",
           "kind": "signal",
-          "unitGroup": "No Unit"
+          "unitGroup": "Percent"
         },
         {
           "id": "sig_mass",

@@ -26,6 +26,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from ..library import unit_groups
 from ..schemas import Channel, Project, SimMessage, SimResult, SummaryValue
 from .maps import TableError, interp1, interp2, parse_table1d, parse_table2d
 from .network import (
@@ -47,22 +48,6 @@ W_EPS = 0.5  # rad/s — static/dynamic brake threshold
 CLUTCH_BAND = 0.5  # rad/s — smooth Coulomb band (residual slip under load)
 RPM = 60.0 / (2.0 * math.pi)
 
-UNIT_BY_GROUP = {
-    "Power": "kW",
-    "Voltage": "V",
-    "Current": "A",
-    "Velocity": "km/h",
-    "Temperature": "°C",
-    "Torque": "N·m",
-    "Rotational Speed": "1/min",
-    "Force": "N",
-    "Distance": "m",
-    "Mass": "kg",
-    "Mass Flow": "kg/h",
-    "No Unit": "-",
-}
-PCT_PORTS = {"sig_soc", "sig_level"}
-
 # scalar parameters that only take effect on the next run when changed live
 STRUCTURAL_KEYS = {
     "inertia_kgm2", "inertia_in_kgm2", "inertia_out_kgm2", "ratio",
@@ -75,6 +60,10 @@ EmitFn = Callable[[dict], None]
 ControlFn = Callable[[], list[dict]]
 
 
+class SingularMatrixError(RuntimeError):
+    """The driveline mass matrix could not be solved (degenerate configuration)."""
+
+
 def solve_linear(m: list[list[float]], q: list[float]) -> list[float]:
     """Gaussian elimination with partial pivoting (systems are tiny)."""
     n = len(q)
@@ -82,9 +71,9 @@ def solve_linear(m: list[list[float]], q: list[float]) -> list[float]:
     for col in range(n):
         piv = max(range(col, n), key=lambda r: abs(a[r][col]))
         if abs(a[piv][col]) < 1e-12:
-            a[col][col] = 1e-12 if a[col][col] >= 0 else -1e-12
-        else:
-            a[col], a[piv] = a[piv], a[col]
+            raise SingularMatrixError(
+                f"pivot {a[piv][col]:.3e} in column {col + 1} of {n}")
+        a[col], a[piv] = a[piv], a[col]
         for r in range(col + 1, n):
             fac = a[r][col] / a[col][col]
             if fac:
@@ -206,7 +195,8 @@ class Runtime:
         self.messages: list[SimMessage] = []
         self.warned: set[str] = set()
         self.signal_values: dict[tuple[str, str], float] = {}
-        self.series: dict[tuple[str, str], list[float]] = defaultdict(list)
+        # recorded values; None marks "no data yet" gaps from decimated backfill
+        self.series: dict[tuple[str, str], list[float | None]] = defaultdict(list)
 
     def message(self, level: str, text: str) -> None:
         self.messages.append(SimMessage(level=level, text=text))  # type: ignore[arg-type]
@@ -643,6 +633,13 @@ def simulate(
                          f"supply — it produces no torque.")
             t_raw = 0.0
         else:
+            if volts < mc.full_load[0][0] - 1e-9 or volts > mc.full_load[-1][0] + 1e-9:
+                rt.warn_once(
+                    f"mapclamp:{mc.el_id}:volt",
+                    f"E-Motor '{model.elements[mc.el_id].label}' is operating outside its "
+                    f"full-load map's voltage range ({volts:.0f} V) — torque clamped to "
+                    f"the nearest map edge.",
+                )
             t_full = interp2(mc.full_load, volts, rpm)
             demand = max(-1.0, min(1.0, demand))
             t_raw = demand * t_full * (mc.q4_scale if demand < 0 else 1.0)
@@ -671,6 +668,13 @@ def simulate(
                            f"Fuel tank empty — engine '{model.elements[ec.el_id].label}' shut off.")
         t_prod = 0.0
         if on:
+            if rpm > ec.full_load[-1][0] + 1e-9:
+                rt.warn_once(
+                    f"mapclamp:{ec.el_id}:rpm",
+                    f"Engine '{model.elements[ec.el_id].label}' exceeds its full-load "
+                    f"curve's speed range ({rpm:.0f} 1/min) — torque clamped to the "
+                    f"curve edge.",
+                )
             # idle governor: throttle floor rises as speed falls below idle
             governor = max(0.0, min(1.0, (ec.idle_rpm - rpm) / (0.25 * ec.idle_rpm)))
             t_prod = max(throttle, governor) * interp1(ec.full_load, rpm)
@@ -845,6 +849,7 @@ def simulate(
                 break
 
         # -- sub-steps -----------------------------------------------------------
+        solver_failed = False
         for _ in range(n_sub):
             # driver ------------------------------------------------------------
             drv_id = model.driver
@@ -1008,7 +1013,17 @@ def simulate(
                 for i in range(n):  # symmetrize
                     for k in range(i + 1, n):
                         m_mat[k][i] = m_mat[i][k]
-                alpha = solve_linear(m_mat, q_vec)
+                try:
+                    alpha = solve_linear(m_mat, q_vec)
+                except SingularMatrixError:
+                    rt.message(
+                        "error",
+                        f"Driveline equations became numerically singular at t = {t:g} s "
+                        "(check gear ratios, inertias and joint configuration) — "
+                        "solve aborted.",
+                    )
+                    solver_failed = True
+                    break
                 for i in range(n):
                     x_new = plan.x[i] + alpha[i] * dt
                     # brake zero-crossing clamp on braked coordinates
@@ -1061,6 +1076,9 @@ def simulate(
                                 st.joint_torque_a[j.el_id] = val
                             else:
                                 st.joint_torque_b[j.el_id] = val
+
+            if solver_failed:
+                break
 
             # vehicle --------------------------------------------------------------
             if veh_id:
@@ -1204,6 +1222,9 @@ def simulate(
                                      "An electrical bus has load but no source — demand is unmet.")
                     bus_voltage[bus.id] = 0.0
 
+        if solver_failed:
+            break
+
         # -- record / publish --------------------------------------------------
         # Always publish (so signal routing stays fresh for the next step); only
         # append to the series on recorded steps, so "store every N steps"
@@ -1220,7 +1241,7 @@ def simulate(
                 return
             lst = rec[(el_id, port_id)]
             while len(lst) < rec_index:
-                lst.append(0.0)
+                lst.append(None)  # no data yet — a gap, not a zero
             lst.append(value)
 
         for el_id, cdef in model.cdef_of.items():
@@ -1358,6 +1379,7 @@ def simulate(
                                             msg.get("value"))
 
     # ---- assemble result -------------------------------------------------------
+    unit_map = unit_groups()
     channels: list[Channel] = []
     port_lookup: dict[tuple[str, str], object] = {}
     for el_id, cdef in model.cdef_of.items():
@@ -1369,15 +1391,16 @@ def simulate(
         pdef = port_lookup.get((el_id, port_id))
         if el is None or pdef is None:
             continue
-        unit = UNIT_BY_GROUP.get(getattr(pdef, "unitGroup", None) or "No Unit", "-")
-        if port_id in PCT_PORTS:
-            unit = "%"
+        unit = unit_map.get(getattr(pdef, "unitGroup", None) or "No Unit", "-")
         channels.append(Channel(
             elementId=el_id,
             portId=port_id,
             label=f"{el.label} · {pdef.name}",
             unit=unit,
-            timeSeries=[{"t": times[i], "value": round(vv, 5)} for i, vv in enumerate(values)],
+            timeSeries=[
+                {"t": times[i], "value": None if vv is None else round(vv, 5)}
+                for i, vv in enumerate(values)
+            ],
         ))
 
     summary: list[SummaryValue] = []
@@ -1408,7 +1431,14 @@ def simulate(
                 unit="kWh/100km"))
         fuel_kg = sum(ec.fuel_used_kg for ec in engines.values())
         if distance > 100 and fuel_kg > 0:
-            liters = fuel_kg / 0.745  # gasoline density
+            density = 0.745  # gasoline default when no tank declares one
+            if model.fuel_tank:
+                try:
+                    density = max(1e-3, float(
+                        params(model.fuel_tank).get("density_kg_per_l", density)))
+                except (TypeError, ValueError):
+                    pass
+            liters = fuel_kg / density
             summary.append(SummaryValue(
                 label="Fuel consumption",
                 value=round(liters * 100.0 / (distance / 1000.0), 2), unit="l/100km"))

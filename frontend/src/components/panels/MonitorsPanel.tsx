@@ -4,13 +4,13 @@ import { useActiveRun, useProjectStore } from "../../store/projectStore";
 import type { Channel } from "../../types";
 
 /** Tiny inline sparkline over a channel's recent history. */
-function Sparkline({ series }: { series: { t: number; value: number }[] }) {
+function Sparkline({ series }: { series: { t: number; value: number | null }[] }) {
   const w = 120;
   const h = 28;
-  if (series.length < 2) {
+  const tail = series.slice(-240).filter((p): p is { t: number; value: number } => p.value !== null);
+  if (tail.length < 2) {
     return <div style={{ width: w, height: h }} className="rounded bg-[color:var(--ss-panel-alt)]" />;
   }
-  const tail = series.slice(-240);
   let min = Infinity;
   let max = -Infinity;
   for (const p of tail) {
@@ -39,22 +39,10 @@ interface MonitorInput {
   unit: string;
 }
 
-const UNIT_BY_GROUP: Record<string, string> = {
-  Power: "kW",
-  Voltage: "V",
-  Current: "A",
-  Velocity: "km/h",
-  Temperature: "°C",
-  Torque: "N·m",
-  "Rotational Speed": "1/min",
-  Force: "N",
-  Distance: "m",
-  "No Unit": "-",
-};
-
 export function MonitorsPanel() {
   const project = useProjectStore((s) => s.project);
   const libraryById = useProjectStore((s) => s.libraryById);
+  const unitGroups = useProjectStore((s) => s.unitGroups);
   const liveValues = useProjectStore((s) => s.liveValues);
   const running = useProjectStore((s) => s.running);
   const select = useProjectStore((s) => s.select);
@@ -88,8 +76,7 @@ export function MonitorsPanel() {
           const pdef =
             srcDef?.ports.find((p) => p.id === srcPort) ??
             src?.dynamicPorts?.find((p) => p.id === srcPort);
-          const unit =
-            srcPort === "sig_soc" ? "%" : (UNIT_BY_GROUP[pdef?.unitGroup ?? "No Unit"] ?? "-");
+          const unit = unitGroups[pdef?.unitGroup ?? "No Unit"] ?? "-";
           inputs.push({
             portName: port.name,
             sourceKey: `${srcEl}:${srcPort}`,
@@ -99,7 +86,7 @@ export function MonitorsPanel() {
         }
         return { element: mon, inputs };
       });
-  }, [project, libraryById]);
+  }, [project, libraryById, unitGroups]);
 
   const channelByKey = useMemo(() => {
     const map = new Map<string, Channel>();
@@ -161,7 +148,7 @@ export function MonitorsPanel() {
                       {inp.portName} — {inp.sourceLabel}
                     </div>
                     <div className="font-mono text-[15px] leading-tight">
-                      {shown === undefined
+                      {shown == null
                         ? "—"
                         : shown.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       <span className="ml-1 text-[10px] text-[color:var(--ss-text-dim)]">

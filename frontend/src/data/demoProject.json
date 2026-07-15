@@ -1,6 +1,8 @@
 {
   "id": "bev-car",
+  "schemaVersion": 1,
   "name": "Battery Electric Car",
+  "description": "Single-motor battery-electric powertrain: HV battery → inverter → e-motor → single-speed gear → driveline and wheels, driven over a speed profile.",
   "systems": [
     {
       "id": "sys-root",

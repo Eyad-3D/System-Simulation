@@ -215,7 +215,7 @@ export function ResultsPanel() {
   const units = useMemo(() => [...new Set(seriesDefs.map((d) => d.unit))], [seriesDefs]);
 
   const chartData = useMemo(() => {
-    const map = new Map<number, Record<string, number>>();
+    const map = new Map<number, Record<string, number | null>>();
     for (const d of seriesDefs) {
       for (const pt of decimate(d.channel.timeSeries)) {
         let row = map.get(pt.t);
@@ -226,7 +226,7 @@ export function ResultsPanel() {
         row[d.dataKey] = pt.value;
       }
     }
-    return [...map.values()].sort((a, b) => a.t - b.t);
+    return [...map.values()].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
   }, [seriesDefs]);
 
   // table shows only the active run (aligned time grid)
@@ -238,7 +238,7 @@ export function ResultsPanel() {
     if (activeChannels.length === 0) return [];
     const cols = activeChannels.map((c) => decimate(c.timeSeries));
     return cols[0].map((pt, i) => {
-      const row: Record<string, number> = { t: pt.t };
+      const row: Record<string, number | null> = { t: pt.t };
       activeChannels.forEach((c, ci) => {
         const p = cols[ci][i];
         if (p) row[channelKey(c)] = p.value;
@@ -277,7 +277,7 @@ export function ResultsPanel() {
     const xs = decimate(xyXChannel.timeSeries);
     const ys = xyYChannels.map((c) => decimate(c.timeSeries));
     return xs.map((pt, i) => {
-      const row: Record<string, number> = { x: pt.value };
+      const row: Record<string, number | null> = { x: pt.value };
       xyYChannels.forEach((c, ci) => {
         const p = ys[ci][i];
         if (p) row[channelKey(c)] = p.value;

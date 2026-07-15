@@ -12,9 +12,19 @@ LIBRARY_PATH = Path(__file__).parent / "library" / "components.json"
 
 
 @lru_cache(maxsize=1)
+def _load_raw() -> dict:
+    return json.loads(LIBRARY_PATH.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
 def load_library() -> list[ComponentDef]:
-    raw = json.loads(LIBRARY_PATH.read_text(encoding="utf-8"))
-    return [ComponentDef.model_validate(c) for c in raw["components"]]
+    return [ComponentDef.model_validate(c) for c in _load_raw()["components"]]
+
+
+@lru_cache(maxsize=1)
+def unit_groups() -> dict[str, str]:
+    """unitGroup name → display unit; the single source of truth for units."""
+    return dict(_load_raw().get("unitGroups", {}))
 
 
 def library_by_id() -> dict[str, ComponentDef]:

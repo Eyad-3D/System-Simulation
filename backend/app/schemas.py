@@ -122,6 +122,9 @@ class SimCase(BaseModel):
 class Project(BaseModel):
     id: str
     name: str
+    # Project-file format version; bump when the shape changes so loaders can
+    # migrate. Files written before versioning load as version 1.
+    schemaVersion: int = 1
     # Short human-readable summary, shown in the Open menu so example projects
     # are self-describing. Optional — user-created projects usually omit it.
     description: str | None = None
@@ -140,7 +143,8 @@ class Channel(BaseModel):
     portId: str
     label: str
     unit: str
-    timeSeries: list[dict[str, float]]  # {t, value}
+    # {t, value}; value is null where a channel has no data yet (gap, not zero)
+    timeSeries: list[dict[str, Optional[float]]]
 
 
 class SummaryValue(BaseModel):

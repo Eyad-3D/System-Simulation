@@ -33,16 +33,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+interface LibraryPayload {
+  components: ComponentDef[];
+  /** unitGroup name → display unit; single-sourced from the backend catalog. */
+  unitGroups?: Record<string, string>;
+}
+
 export async function fetchLibrary(): Promise<{
   components: ComponentDef[];
+  unitGroups: Record<string, string>;
   offline: boolean;
 }> {
   try {
-    const data = await request<{ components: ComponentDef[] }>("/library");
-    return { components: data.components, offline: false };
+    const data = await request<LibraryPayload>("/library");
+    return { components: data.components, unitGroups: data.unitGroups ?? {}, offline: false };
   } catch {
+    const bundled = fallbackLibrary as LibraryPayload;
     return {
-      components: (fallbackLibrary as { components: ComponentDef[] }).components,
+      components: bundled.components,
+      unitGroups: bundled.unitGroups ?? {},
       offline: true,
     };
   }

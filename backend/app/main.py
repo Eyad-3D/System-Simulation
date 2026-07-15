@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from . import storage
-from .library import load_library
+from .library import load_library, unit_groups
 from .schemas import DataCheck, Project, SimResult, SimulateRequest, ValidateRequest
 from .solver import simulate
 from .validation import validate_project
@@ -50,7 +50,10 @@ def health() -> dict:
 
 @app.get("/api/library")
 def get_library() -> dict:
-    return {"components": [c.model_dump() for c in load_library()]}
+    return {
+        "components": [c.model_dump() for c in load_library()],
+        "unitGroups": unit_groups(),
+    }
 
 
 @app.get("/api/projects")
