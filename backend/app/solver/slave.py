@@ -67,11 +67,13 @@ class StepResult:
 
     ``events`` carries structural notifications the master must react to
     (e.g. "reconfigured" after a gear shift rebuilt the driveline plan) —
-    the internal analogue of FMI 3.0 event signaling.
+    the internal analogue of FMI 3.0 event signaling. ``detail`` explains
+    an ``error`` status in user-facing terms.
     """
 
     status: Literal["ok", "error"] = "ok"
     events: list[str] = field(default_factory=list)
+    detail: str = ""
 
 
 def var_name(element_id: str, key: str) -> str:
